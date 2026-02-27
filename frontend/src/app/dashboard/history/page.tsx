@@ -17,7 +17,7 @@ type InterviewHistoryItem = {
 
 export default function HistoryPage() {
     const [items, setItems] = useState<InterviewHistoryItem[]>([]);
-    const [sortBy, setSortBy] = useState<'date' | 'score' | 'role' | 'status'>('date');
+    const [sortBy, setSortBy] = useState<'date' | 'score' | 'role'>('date');
     const [sortValue, setSortValue] = useState<string>('newest');
     const [loading, setLoading] = useState(true);
 
@@ -53,7 +53,6 @@ export default function HistoryPage() {
         if (sortBy === 'date') setSortValue('newest');
         if (sortBy === 'role') setSortValue('all');
         if (sortBy === 'score') setSortValue('all');
-        if (sortBy === 'status') setSortValue('all');
     }, [sortBy]);
 
     const sortedItems = useMemo(() => {
@@ -69,10 +68,6 @@ export default function HistoryPage() {
 
         if (sortBy === 'role' && sortValue !== 'all') {
             result = result.filter((item) => item.role === sortValue);
-        }
-
-        if (sortBy === 'status' && sortValue !== 'all') {
-            result = result.filter((item) => item.status === sortValue);
         }
 
         if (sortBy === 'score' && sortValue !== 'all') {
@@ -98,13 +93,12 @@ export default function HistoryPage() {
                 <div className="flex gap-2">
                     <select
                         value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value as 'date' | 'score' | 'role' | 'status')}
+                        onChange={(e) => setSortBy(e.target.value as 'date' | 'score' | 'role')}
                         className="bg-surface border border-border rounded-lg px-4 py-2 text-white"
                     >
                         <option value="date">Sort by Date</option>
                         <option value="score">Sort by Score</option>
                         <option value="role">Sort by Role</option>
-                        <option value="status">Sort by Status</option>
                     </select>
                     <select
                         value={sortValue}
@@ -132,13 +126,6 @@ export default function HistoryPage() {
                                 <option value="high">High (8-10)</option>
                                 <option value="medium">Medium (5-7.9)</option>
                                 <option value="low">Low (0-4.9)</option>
-                            </>
-                        )}
-                        {sortBy === 'status' && (
-                            <>
-                                <option value="all">All Status</option>
-                                <option value="completed">Completed</option>
-                                <option value="in-progress">In-progress</option>
                             </>
                         )}
                     </select>
