@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
-import { FiSend, FiCheckCircle, FiChevronRight, FiAlertCircle, FiBarChart2, FiThumbsUp, FiTrendingDown, FiMic, FiSquare, FiXCircle } from 'react-icons/fi';
+import { FiSend, FiCheckCircle, FiChevronRight, FiAlertCircle, FiBarChart2, FiThumbsUp, FiTrendingDown, FiXCircle } from 'react-icons/fi';
 
 type EndReason = 'manual' | 'timeout' | 'abandoned';
 
@@ -19,12 +19,6 @@ export default function InterviewRoom() {
     const [evaluating, setEvaluating] = useState(false);
     const [finishing, setFinishing] = useState(false);
     const [timeLeftSeconds, setTimeLeftSeconds] = useState<number | null>(null);
-
-    // Recording states
-    const [isRecording, setIsRecording] = useState(false);
-    const [isTranscribing, setIsTranscribing] = useState(false);
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioChunksRef = useRef<Blob[]>([]);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const hasFinalizedRef = useRef(false);
@@ -244,11 +238,6 @@ export default function InterviewRoom() {
             return;
         }
 
-        if (isRecording && mediaRecorderRef.current) {
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
-        }
-
         const typedAnswer = answerInput.trim();
         const currentQuestion = interview.questions[currentQuestionIndex];
         const alreadyAnswered = Boolean(currentQuestion?.userAnswer);
@@ -264,61 +253,6 @@ export default function InterviewRoom() {
         }
 
         await handleFinishInterview('timeout');
-    };
-
-    const startRecording = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mediaRecorder = new MediaRecorder(stream);
-            mediaRecorderRef.current = mediaRecorder;
-            audioChunksRef.current = [];
-
-            mediaRecorder.ondataavailable = (e) => {
-                if (e.data.size > 0) {
-                    audioChunksRef.current.push(e.data);
-                }
-            };
-
-            mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-
-                // Stop tracks to release mic
-                stream.getTracks().forEach(track => track.stop());
-
-                await handleTranscription(audioBlob);
-            };
-
-            mediaRecorder.start();
-            setIsRecording(true);
-        } catch (error) {
-            console.error("Error accessing microphone:", error);
-            alert("Microphone access denied or unavailable.");
-        }
-    };
-
-    const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
-        }
-    };
-
-    const handleTranscription = async (audioBlob: Blob) => {
-        setIsTranscribing(true);
-        try {
-            const formData = new FormData();
-            formData.append('audio', audioBlob, 'recording.webm');
-
-            const res = await api.post(`/interviews/${id}/speech-to-text`, formData);
-
-            // Append transcribed text
-            setAnswerInput(prev => prev + (prev ? ' ' : '') + res.data.text);
-        } catch (error: any) {
-            console.error('Transcription failed:', error);
-            alert(error?.response?.data?.message || 'Failed to transcribe audio.');
-        } finally {
-            setIsTranscribing(false);
-        }
     };
 
     if (loading) return <div className="min-h-screen bg-background flex items-center justify-center text-white">Loading Interview Environment...</div>;
@@ -522,41 +456,21 @@ export default function InterviewRoom() {
                             <textarea
                                 value={answerInput}
                                 onChange={(e) => setAnswerInput(e.target.value)}
-                                placeholder={isRecording ? "Listening..." : "Type your answer here or click mic to speak..."}
-                                disabled={evaluating || isRecording || isTranscribing || finishing}
+                                placeholder="Type your answer here..."
+                                disabled={evaluating || finishing}
                                 className="w-full bg-background border border-border rounded-xl px-4 py-4 pr-16 text-white focus:outline-none focus:border-primary resize-none min-h-[120px] transition-colors"
                             />
 
                             <div className="absolute bottom-4 right-4 flex space-x-2">
-                                {isRecording ? (
-                                    <button
-                                        onClick={stopRecording}
-                                        className="p-3 bg-red-500 hover:bg-red-600 animate-pulse text-white rounded-lg transition-colors shadow-lg shadow-red-500/20"
-                                        title="Stop Recording"
-                                    >
-                                        <FiSquare className="w-5 h-5 fill-current" />
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={startRecording}
-                                        disabled={evaluating || isTranscribing || finishing}
-                                        className="p-3 bg-secondary hover:bg-secondary/80 disabled:bg-border disabled:text-text-muted text-white rounded-lg transition-colors"
-                                        title="Voice Answer"
-                                    >
-                                        <FiMic className="w-5 h-5" />
-                                    </button>
-                                )}
-
                                 <button
                                     onClick={handleAnswerSubmit}
-                                    disabled={evaluating || isRecording || isTranscribing || finishing || !answerInput.trim()}
+                                    disabled={evaluating || finishing || !answerInput.trim()}
                                     className="p-3 bg-primary hover:bg-primary-hover disabled:bg-border disabled:text-text-muted text-white rounded-lg transition-colors"
                                     title="Submit Answer"
                                 >
                                     <FiSend className="w-5 h-5" />
                                 </button>
                             </div>
-                            {isTranscribing && <span className="text-xs text-text-muted mt-2 animate-pulse">Transcribing audio...</span>}
                         </div>
                     ) : (
                         <div className="flex justify-end space-x-4">
@@ -584,4 +498,3 @@ export default function InterviewRoom() {
         </div>
     );
 }
-
