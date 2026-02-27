@@ -16,6 +16,6 @@
   body {
     background-color: var(--color-background);
     color: var(--color-text-main);
-    font-family: 'Inter', sans-serif;
+    font-family: "Trebuchet MS", "Segoe UI", "Noto Sans", sans-serif;
   }
 }
