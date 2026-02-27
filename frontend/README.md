@@ -22,7 +22,9 @@ Create a `.env.local` file (this repo already ignores `.env*`) and add:
 | `NVIDIA_NIM_API_KEY` | API key for NVIDIA NIM |
 | `NVIDIA_NIM_BASE_URL` *(optional)* | NIM base URL (defaults to `https://integrate.api.nvidia.com/v1`) |
 | `NVIDIA_NIM_MODEL` *(optional)* | NIM model id (defaults to `meta/llama-3.1-70b-instruct`) |
-| `NVIDIA_NIM_STT_MODEL` *(optional)* | NIM speech-to-text model id (defaults to `openai/whisper-large-v3`) |
+| `NVIDIA_NIM_STT_API_KEY` *(optional)* | STT API key override (defaults to `NVIDIA_NIM_API_KEY`) |
+| `NVIDIA_NIM_STT_BASE_URL` *(optional)* | STT base URL override (defaults to `NVIDIA_NIM_BASE_URL`) |
+| `NVIDIA_NIM_STT_MODEL` *(optional)* | STT model id (defaults to `whisper-large-v3`) |
 | `NVIDIA_NIM_STT_LANGUAGE` *(optional)* | Language hint for transcription (example: `en`) |
 | `NVIDIA_API_KEY` *(legacy fallback)* | Backward-compatible fallback if `NVIDIA_NIM_API_KEY` is not set |
 | `GOOGLE_CLIENT_ID` | Google OAuth client id used by server-side token validation |

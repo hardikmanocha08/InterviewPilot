@@ -7,12 +7,19 @@ if (!nimApiKey) {
 
 const nimBaseUrl = process.env.NVIDIA_NIM_BASE_URL ?? 'https://integrate.api.nvidia.com/v1';
 const nimModel = process.env.NVIDIA_NIM_MODEL ?? 'meta/llama-3.1-70b-instruct';
-const nimSttModel = process.env.NVIDIA_NIM_STT_MODEL ?? 'openai/whisper-large-v3';
+const sttApiKey = process.env.NVIDIA_NIM_STT_API_KEY ?? nimApiKey;
+const sttBaseUrl = process.env.NVIDIA_NIM_STT_BASE_URL ?? nimBaseUrl;
+const nimSttModel = process.env.NVIDIA_NIM_STT_MODEL ?? 'whisper-large-v3';
 const nimSttLanguage = process.env.NVIDIA_NIM_STT_LANGUAGE;
 
 const openai = new OpenAI({
   apiKey: nimApiKey,
   baseURL: nimBaseUrl,
+});
+
+const sttClient = new OpenAI({
+  apiKey: sttApiKey,
+  baseURL: sttBaseUrl,
 });
 
 export const generateInterviewQuestions = async (
@@ -118,7 +125,7 @@ export const evaluateAnswer = async (questionText: string, userAnswer: string) =
 
 export const transcribeAudio = async (audioFile: File) => {
   try {
-    const transcription = await openai.audio.transcriptions.create({
+    const transcription = await sttClient.audio.transcriptions.create({
       file: audioFile,
       model: nimSttModel,
       ...(nimSttLanguage ? { language: nimSttLanguage } : {}),
@@ -132,6 +139,13 @@ export const transcribeAudio = async (audioFile: File) => {
     return text;
   } catch (error) {
     console.error('Audio transcription error:', error);
-    throw new Error('Failed to transcribe audio');
+    if (error && typeof error === 'object' && 'status' in error) {
+      const status = String((error as { status?: number }).status ?? 'unknown');
+      throw new Error(
+        `Failed to transcribe audio (status ${status}). Check NVIDIA_NIM_STT_BASE_URL and NVIDIA_NIM_STT_MODEL.`
+      );
+    }
+
+    throw new Error('Failed to transcribe audio. Check STT provider configuration.');
   }
 };
