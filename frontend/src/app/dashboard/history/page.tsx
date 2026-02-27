@@ -17,14 +17,14 @@ type InterviewHistoryItem = {
 
 export default function HistoryPage() {
     const [items, setItems] = useState<InterviewHistoryItem[]>([]);
-    const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'in-progress'>('all');
+    const [sortBy, setSortBy] = useState<'date' | 'score' | 'role' | 'status'>('date');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const loadHistory = async () => {
             try {
-                const query = statusFilter === 'all' ? '' : `?status=${statusFilter}`;
-                const response = await api.get(`/interviews${query}`);
+                const response = await api.get('/interviews');
                 setItems(response.data);
             } catch (error) {
                 console.error('Failed to load history:', error);
@@ -35,7 +35,7 @@ export default function HistoryPage() {
 
         setLoading(true);
         loadHistory();
-    }, [statusFilter]);
+    }, []);
 
     const summary = useMemo(() => {
         if (!items.length) {
@@ -49,6 +49,26 @@ export default function HistoryPage() {
         return { completed: completed.length, inProgress, avg };
     }, [items]);
 
+    const sortedItems = useMemo(() => {
+        const sorted = [...items].sort((a, b) => {
+            if (sortBy === 'score') {
+                return (a.score || 0) - (b.score || 0);
+            }
+
+            if (sortBy === 'role') {
+                return a.role.localeCompare(b.role);
+            }
+
+            if (sortBy === 'status') {
+                return a.status.localeCompare(b.status);
+            }
+
+            return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+        });
+
+        return sortOrder === 'desc' ? sorted.reverse() : sorted;
+    }, [items, sortBy, sortOrder]);
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -56,15 +76,26 @@ export default function HistoryPage() {
                     <h1 className="text-3xl font-bold text-white mb-2">Interview History</h1>
                     <p className="text-text-muted">Review all your interview sessions and performance trends.</p>
                 </div>
-                <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value as 'all' | 'completed' | 'in-progress')}
-                    className="bg-surface border border-border rounded-lg px-4 py-2 text-white"
-                >
-                    <option value="all">All sessions</option>
-                    <option value="completed">Completed</option>
-                    <option value="in-progress">In-progress</option>
-                </select>
+                <div className="flex gap-2">
+                    <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as 'date' | 'score' | 'role' | 'status')}
+                        className="bg-surface border border-border rounded-lg px-4 py-2 text-white"
+                    >
+                        <option value="date">Sort by Date</option>
+                        <option value="score">Sort by Score</option>
+                        <option value="role">Sort by Role</option>
+                        <option value="status">Sort by Status</option>
+                    </select>
+                    <select
+                        value={sortOrder}
+                        onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
+                        className="bg-surface border border-border rounded-lg px-4 py-2 text-white"
+                    >
+                        <option value="desc">Descending</option>
+                        <option value="asc">Ascending</option>
+                    </select>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -86,10 +117,10 @@ export default function HistoryPage() {
                 <div className="divide-y divide-border">
                     {loading ? (
                         <div className="p-6 text-text-muted">Loading history...</div>
-                    ) : items.length === 0 ? (
+                    ) : sortedItems.length === 0 ? (
                         <div className="p-6 text-text-muted">No interview history yet.</div>
                     ) : (
-                        items.map((item) => (
+                        sortedItems.map((item) => (
                             <div key={item._id} className="p-6 flex items-center justify-between">
                                 <div>
                                     <p className="text-white font-medium">{item.role}</p>
