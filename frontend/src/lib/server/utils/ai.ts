@@ -7,6 +7,8 @@ if (!nimApiKey) {
 
 const nimBaseUrl = process.env.NVIDIA_NIM_BASE_URL ?? 'https://integrate.api.nvidia.com/v1';
 const nimModel = process.env.NVIDIA_NIM_MODEL ?? 'meta/llama-3.1-70b-instruct';
+const nimSttModel = process.env.NVIDIA_NIM_STT_MODEL ?? 'openai/whisper-large-v3';
+const nimSttLanguage = process.env.NVIDIA_NIM_STT_LANGUAGE;
 
 const openai = new OpenAI({
   apiKey: nimApiKey,
@@ -114,6 +116,22 @@ export const evaluateAnswer = async (questionText: string, userAnswer: string) =
   }
 };
 
-export const transcribeAudioPlaceholder = async () => {
-  return 'This is a placeholder transcription. Replace with a real speech-to-text provider as needed.';
+export const transcribeAudio = async (audioFile: File) => {
+  try {
+    const transcription = await openai.audio.transcriptions.create({
+      file: audioFile,
+      model: nimSttModel,
+      ...(nimSttLanguage ? { language: nimSttLanguage } : {}),
+    });
+
+    const text = typeof transcription?.text === 'string' ? transcription.text.trim() : '';
+    if (!text) {
+      throw new Error('Empty transcription received');
+    }
+
+    return text;
+  } catch (error) {
+    console.error('Audio transcription error:', error);
+    throw new Error('Failed to transcribe audio');
+  }
 };

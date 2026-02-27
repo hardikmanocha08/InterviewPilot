@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/server/auth';
 import connectDB from '@/lib/server/db';
 import Interview from '@/lib/server/models/Interview';
-import { transcribeAudioPlaceholder } from '@/lib/server/utils/ai';
+import { transcribeAudio } from '@/lib/server/utils/ai';
 
 export async function POST(
   req: NextRequest,
@@ -28,12 +28,20 @@ export async function POST(
   const formData = await req.formData();
   const audio = formData.get('audio');
 
-  if (!audio) {
-    return NextResponse.json({ message: 'No audio file provided' }, { status: 400 });
+  if (!audio || !(audio instanceof File)) {
+    return NextResponse.json({ message: 'Valid audio file is required' }, { status: 400 });
   }
 
   try {
-    const text = await transcribeAudioPlaceholder();
+    const maxSizeBytes = 20 * 1024 * 1024;
+    if (audio.size > maxSizeBytes) {
+      return NextResponse.json(
+        { message: 'Audio file is too large. Please upload a file under 20MB.' },
+        { status: 400 }
+      );
+    }
+
+    const text = await transcribeAudio(audio);
     return NextResponse.json({ text });
   } catch (err) {
     console.error('Transcription error', err);
