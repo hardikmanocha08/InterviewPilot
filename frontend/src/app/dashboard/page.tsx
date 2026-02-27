@@ -122,7 +122,7 @@ export default function Dashboard() {
                         />
                     </div>
                     <p className="text-xs text-text-muted">
-                        {levelProgress.currentLevelXp}/{levelProgress.xpForNext} XP to next level
+                        {levelProgress.currentLevelXp}/{levelProgress.xpForNext} XP to next level 
                     </p>
                     <p className="text-xs text-text-muted mt-2">Longest streak: {summary.user.longestStreak} day(s)</p>
                 </div>

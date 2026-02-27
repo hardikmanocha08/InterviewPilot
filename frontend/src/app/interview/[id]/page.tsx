@@ -345,7 +345,7 @@ export default function InterviewRoom() {
 
     return (
         <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden relative">
-            {/* Left panel: Info & Progress */}
+            {/* Left panel: Info  & Progress */}
             <div className="w-full md:w-1/3 bg-surface border-r border-border p-6 flex flex-col h-full overflow-hidden">
                 <div className="mb-8">
                     <div className="flex items-center justify-between gap-3 mb-1">
