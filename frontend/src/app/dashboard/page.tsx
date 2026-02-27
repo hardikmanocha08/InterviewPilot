@@ -82,7 +82,7 @@ export default function Dashboard() {
     ];
 
     return (
-        <div className="max-w-6xl mx-auto space-y-8">
+        <div className="max-w-6xl mx-auto h-full overflow-hidden flex flex-col gap-6">
             <div>
                 <h1 className="text-3xl font-bold text-white mb-2">Dashboard Overview</h1>
                 <p className="text-text-muted">
@@ -142,12 +142,12 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            <div className="bg-surface rounded-2xl border border-border overflow-hidden">
+            <div className="bg-surface rounded-2xl border border-border overflow-hidden flex-1 min-h-0">
                 <div className="p-6 border-b border-border">
                     <h2 className="text-xl font-bold text-white">Recent Interviews</h2>
                 </div>
 
-                <div className="divide-y divide-border">
+                <div className="divide-y divide-border overflow-y-auto max-h-full">
                     {summary.recentInterviews.length > 0 ? summary.recentInterviews.map((interview) => (
                         <div key={interview._id} className="p-6 flex items-center justify-between hover:bg-white/5 transition-colors">
                             <div>

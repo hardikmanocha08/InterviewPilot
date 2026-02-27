@@ -12,6 +12,7 @@ type SettingsForm = {
         notifications: boolean;
         darkMode: boolean;
         preferredQuestionCount: number;
+        notificationEmail: string;
     };
 };
 
@@ -23,6 +24,7 @@ const initialForm: SettingsForm = {
         notifications: true,
         darkMode: true,
         preferredQuestionCount: 3,
+        notificationEmail: '',
     },
 };
 
@@ -31,6 +33,7 @@ export default function SettingsPage() {
     const [form, setForm] = useState<SettingsForm>(initialForm);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [sendingEmail, setSendingEmail] = useState(false);
     const [message, setMessage] = useState('');
 
     useEffect(() => {
@@ -45,6 +48,7 @@ export default function SettingsPage() {
                         notifications: response.data.settings?.notifications ?? true,
                         darkMode: response.data.settings?.darkMode ?? true,
                         preferredQuestionCount: response.data.settings?.preferredQuestionCount ?? 3,
+                        notificationEmail: response.data.settings?.notificationEmail || response.data.email || '',
                     },
                 });
             } catch (error) {
@@ -73,18 +77,39 @@ export default function SettingsPage() {
         }
     };
 
+    const sendTestEmail = async () => {
+        setSendingEmail(true);
+        setMessage('');
+        try {
+            const response = await api.post('/users/settings/test-email', {
+                email: form.settings.notificationEmail,
+            });
+            setMessage(response.data?.message || 'Test email sent successfully.');
+        } catch (error: any) {
+            console.error('Failed to send test email:', error);
+            setMessage(error?.response?.data?.message || 'Failed to send test email.');
+        } finally {
+            setSendingEmail(false);
+        }
+    };
+
+    useEffect(() => {
+        document.documentElement.classList.toggle('theme-light', !form.settings.darkMode);
+        localStorage.setItem('theme', form.settings.darkMode ? 'dark' : 'light');
+    }, [form.settings.darkMode]);
+
     if (loading) {
         return <div className="text-text-muted">Loading settings...</div>;
     }
 
     return (
-        <div className="max-w-3xl space-y-6">
+        <div className="max-w-3xl h-full overflow-hidden flex flex-col gap-6">
             <div>
                 <h1 className="text-3xl font-bold text-white mb-2">Settings</h1>
                 <p className="text-text-muted">Update your interview preferences and profile defaults.</p>
             </div>
 
-            <form onSubmit={saveSettings} className="bg-surface border border-border rounded-2xl p-6 space-y-5">
+            <form onSubmit={saveSettings} className="bg-surface border border-border rounded-2xl p-6 space-y-5 flex-1 overflow-y-auto min-h-0">
                 <div>
                     <label className="text-sm text-text-muted block mb-1">Target Role</label>
                     <select
@@ -147,6 +172,25 @@ export default function SettingsPage() {
                     />
                 </div>
 
+                <div>
+                    <label className="text-sm text-text-muted block mb-1">Notification Email</label>
+                    <input
+                        type="email"
+                        value={form.settings.notificationEmail}
+                        onChange={(e) =>
+                            setForm((prev) => ({
+                                ...prev,
+                                settings: {
+                                    ...prev.settings,
+                                    notificationEmail: e.target.value,
+                                },
+                            }))
+                        }
+                        className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white"
+                        placeholder="you@example.com"
+                    />
+                </div>
+
                 <div className="space-y-3">
                     <label className="flex items-center justify-between text-white">
                         <span>Email Notifications</span>
@@ -165,7 +209,7 @@ export default function SettingsPage() {
                         />
                     </label>
                     <label className="flex items-center justify-between text-white">
-                        <span>Dark Mode Preference</span>
+                        <span>Dark Mode</span>
                         <input
                             type="checkbox"
                             checked={form.settings.darkMode}
@@ -188,6 +232,14 @@ export default function SettingsPage() {
                     className="bg-primary hover:bg-primary-hover disabled:opacity-70 text-white px-5 py-2 rounded-lg"
                 >
                     {saving ? 'Saving...' : 'Save Settings'}
+                </button>
+                <button
+                    type="button"
+                    onClick={sendTestEmail}
+                    disabled={sendingEmail}
+                    className="ml-3 bg-accent hover:bg-green-600 disabled:opacity-70 text-white px-5 py-2 rounded-lg"
+                >
+                    {sendingEmail ? 'Sending...' : 'Send Test Email'}
                 </button>
                 {message && <p className="text-sm text-text-muted">{message}</p>}
             </form>

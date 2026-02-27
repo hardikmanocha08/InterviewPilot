@@ -3,7 +3,7 @@
 import { ReactNode, useEffect } from 'react';
 import Link from 'next/link';
 import useAuthStore from '@/store/authStore';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { FiHome, FiTrendingUp, FiSettings, FiLogOut, FiPlusCircle } from 'react-icons/fi';
 import api from '@/lib/api';
 import Image from 'next/image';
@@ -11,6 +11,7 @@ import Image from 'next/image';
 export default function DashboardLayout({ children }: { children: ReactNode }) {
     const { user, token, setUser, logout } = useAuthStore();
     const router = useRouter();
+    const pathname = usePathname();
 
     const handleLogout = () => {
         logout();
@@ -41,10 +42,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         loadProfile();
     }, [token, user, setUser, logout, router]);
 
+    useEffect(() => {
+        const isDarkMode = user?.settings?.darkMode ?? true;
+        document.documentElement.classList.toggle('theme-light', !isDarkMode);
+        localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+    }, [user?.settings?.darkMode]);
+
     return (
-        <div className="min-h-screen bg-background flex">
+        <div className="h-screen bg-background flex overflow-hidden">
             {/* Sidebar */}
-            <aside className="w-64 bg-surface border-r border-border hidden md:flex flex-col">
+            <aside className="w-64 bg-surface border-r border-border hidden md:flex flex-col fixed left-0 top-0 h-screen overflow-hidden">
                 <div className="p-6">
                     <div className="flex items-center gap-3">
                         <Image src="/interviewpilot-logo.svg" alt="InterviewPilot logo" width={32} height={32} />
@@ -53,15 +60,29 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 </div>
 
                 <nav className="flex-1 px-4 space-y-2 mt-4">
-                    <Link href="/dashboard" className="flex items-center space-x-3 px-4 py-3 text-text-main hover:bg-white/5 rounded-lg transition-colors">
+                    <Link href="/dashboard" className="flex items-center space-x-3 px-4 py-3 text-text-main bg-white/10 rounded-lg">
                         <FiHome className="w-5 h-5" />
-                        <span>Overview</span>
+                        <span>Dashboard</span>
                     </Link>
-                    <Link href="/dashboard/history" className="flex items-center space-x-3 px-4 py-3 text-text-muted hover:text-text-main hover:bg-white/5 rounded-lg transition-colors">
+                    <Link
+                        href="/dashboard/history"
+                        className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                            pathname?.startsWith('/dashboard/history')
+                                ? 'text-text-main bg-white/5'
+                                : 'text-text-muted hover:text-text-main hover:bg-white/5'
+                        }`}
+                    >
                         <FiTrendingUp className="w-5 h-5" />
                         <span>History</span>
                     </Link>
-                    <Link href="/dashboard/settings" className="flex items-center space-x-3 px-4 py-3 text-text-muted hover:text-text-main hover:bg-white/5 rounded-lg transition-colors">
+                    <Link
+                        href="/dashboard/settings"
+                        className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                            pathname?.startsWith('/dashboard/settings')
+                                ? 'text-text-main bg-white/5'
+                                : 'text-text-muted hover:text-text-main hover:bg-white/5'
+                        }`}
+                    >
                         <FiSettings className="w-5 h-5" />
                         <span>Settings</span>
                     </Link>
@@ -83,7 +104,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 overflow-auto">
+            <main className="flex-1 md:ml-64 h-screen overflow-hidden flex flex-col">
                 <header className="bg-surface/50 backdrop-blur-md border-b border-border sticky top-0 z-10 flex items-center justify-between px-8 py-4">
                     <div className="md:hidden">
                         <div className="flex items-center gap-2">
@@ -105,7 +126,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                     </Link>
                 </header>
 
-                <div className="p-8">
+                <div className="p-8 flex-1 overflow-hidden">
                     {children}
                 </div>
             </main>

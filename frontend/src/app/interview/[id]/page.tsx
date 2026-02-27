@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
-import { FiSend, FiCheckCircle, FiChevronRight, FiAlertCircle, FiBarChart2, FiThumbsUp, FiTrendingDown, FiMic, FiSquare } from 'react-icons/fi';
+import { FiSend, FiCheckCircle, FiChevronRight, FiAlertCircle, FiBarChart2, FiThumbsUp, FiTrendingDown, FiMic, FiSquare, FiXCircle } from 'react-icons/fi';
 
 type EndReason = 'manual' | 'timeout' | 'abandoned';
 
@@ -309,15 +309,13 @@ export default function InterviewRoom() {
             const formData = new FormData();
             formData.append('audio', audioBlob, 'recording.webm');
 
-            const res = await api.post(`/interviews/${id}/speech-to-text`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
+            const res = await api.post(`/interviews/${id}/speech-to-text`, formData);
 
             // Append transcribed text
             setAnswerInput(prev => prev + (prev ? ' ' : '') + res.data.text);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Transcription failed:', error);
-            alert('Failed to transcribe audio.');
+            alert(error?.response?.data?.message || 'Failed to transcribe audio.');
         } finally {
             setIsTranscribing(false);
         }
@@ -346,9 +344,17 @@ export default function InterviewRoom() {
         : 0;
 
     return (
-        <div className="min-h-screen bg-background flex flex-col md:flex-row">
+        <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden relative">
+            <button
+                onClick={() => handleFinishInterview('manual')}
+                disabled={finishing}
+                className="fixed top-4 right-4 z-50 bg-red-500 hover:bg-red-600 disabled:opacity-70 text-white px-4 py-2 rounded-lg font-semibold shadow-lg flex items-center space-x-2"
+            >
+                <FiXCircle className="w-5 h-5" />
+                <span>{finishing ? 'Ending...' : 'End Test'}</span>
+            </button>
             {/* Left panel: Info & Progress */}
-            <div className="w-full md:w-1/3 bg-surface border-r border-border p-6 flex flex-col">
+            <div className="w-full md:w-1/3 bg-surface border-r border-border p-6 flex flex-col h-full overflow-hidden">
                 <div className="mb-8">
                     <h2 className="text-sm font-semibold text-primary uppercase tracking-wider mb-1">Interview Session</h2>
                     <h1 className="text-2xl font-bold text-white mb-2">{interview.role}</h1>
@@ -389,7 +395,7 @@ export default function InterviewRoom() {
             </div>
 
             {/* Right panel: Chat / Interaction Area */}
-            <div className="w-full md:w-2/3 flex flex-col h-screen max-h-screen">
+            <div className="w-full md:w-2/3 flex flex-col h-full">
                 {interview.interviewMode !== 'untimed' && timeLeftSeconds !== null && (
                     <div className="px-6 md:px-10 pt-6">
                         <div className="bg-surface border border-border rounded-2xl p-4">

@@ -18,6 +18,7 @@ export interface IUser extends Document {
     notifications: boolean;
     darkMode: boolean;
     preferredQuestionCount: number;
+    notificationEmail?: string;
   };
   matchPassword: (enteredPassword: string) => Promise<boolean>;
 }
@@ -85,6 +86,10 @@ const userSchema = new mongoose.Schema<IUser>(
       preferredQuestionCount: {
         type: Number,
         default: 3,
+      },
+      notificationEmail: {
+        type: String,
+        default: '',
       },
     },
   },

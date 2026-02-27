@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
-import { FiPlayCircle, FiBriefcase, FiStar } from 'react-icons/fi';
+import { FiPlayCircle, FiBriefcase, FiStar, FiArrowLeft } from 'react-icons/fi';
 
 export default function InterviewSetup() {
     const { user, token, logout } = useAuthStore();
@@ -78,7 +78,16 @@ export default function InterviewSetup() {
     };
 
     return (
-        <div className="min-h-screen bg-background flex flex-col items-center py-20 px-4">
+        <div className="h-screen bg-background flex flex-col items-center py-8 px-4 overflow-hidden">
+            <div className="w-full max-w-2xl mb-6">
+                <button
+                    onClick={() => router.push('/dashboard')}
+                    className="inline-flex items-center space-x-2 text-text-muted hover:text-white transition-colors"
+                >
+                    <FiArrowLeft className="w-4 h-4" />
+                    <span>Back to Dashboard</span>
+                </button>
+            </div>
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -92,7 +101,7 @@ export default function InterviewSetup() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="max-w-xl w-full bg-surface border border-border rounded-2xl p-8 shadow-xl relative overflow-hidden"
+                className="max-w-xl w-full bg-surface border border-border rounded-2xl p-8 shadow-xl relative overflow-y-auto"
             >
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-secondary"></div>
 

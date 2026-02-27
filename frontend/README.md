@@ -27,6 +27,8 @@ Create a `.env.local` file (this repo already ignores `.env*`) and add:
 | `NVIDIA_NIM_STT_MODEL` *(optional)* | STT model id (defaults to `whisper-large-v3`) |
 | `NVIDIA_NIM_STT_LANGUAGE` *(optional)* | Language hint for transcription (example: `en`) |
 | `NVIDIA_API_KEY` *(legacy fallback)* | Backward-compatible fallback if `NVIDIA_NIM_API_KEY` is not set |
+| `RESEND_API_KEY` *(optional for settings email)* | Resend API key used to send test emails from Settings |
+| `RESEND_FROM_EMAIL` *(optional for settings email)* | Verified sender address used by Resend (example: `no-reply@yourdomain.com`) |
 | `GOOGLE_CLIENT_ID` | Google OAuth client id used by server-side token validation |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Google OAuth client id used by browser sign-in button |
 | `NEXT_PUBLIC_API_URL` *(optional)* | Override the default `/api` base (useful for testing against a different backend) |

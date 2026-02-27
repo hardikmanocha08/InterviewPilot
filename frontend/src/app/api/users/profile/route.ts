@@ -48,6 +48,19 @@ export async function PATCH(req: NextRequest) {
     user.industryMode = industryMode;
   }
   if (settings && typeof settings === 'object') {
+    const nextNotificationEmail =
+      typeof settings.notificationEmail === 'string'
+        ? settings.notificationEmail.trim().toLowerCase()
+        : user.settings?.notificationEmail;
+
+    if (
+      typeof nextNotificationEmail === 'string' &&
+      nextNotificationEmail.length > 0 &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextNotificationEmail)
+    ) {
+      return NextResponse.json({ message: 'Invalid notification email address' }, { status: 400 });
+    }
+
     const safeQuestionCount =
       typeof settings.preferredQuestionCount === 'number'
         ? Math.max(3, Math.min(7, settings.preferredQuestionCount))
@@ -57,6 +70,7 @@ export async function PATCH(req: NextRequest) {
       ...user.settings,
       ...settings,
       preferredQuestionCount: safeQuestionCount,
+      notificationEmail: nextNotificationEmail || '',
     };
   }
 

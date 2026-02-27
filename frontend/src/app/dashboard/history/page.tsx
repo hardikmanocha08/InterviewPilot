@@ -84,7 +84,7 @@ export default function HistoryPage() {
     }, [items, sortBy, sortValue]);
 
     return (
-        <div className="space-y-6">
+        <div className="h-full overflow-hidden flex flex-col gap-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-white mb-2">Interview History</h1>
@@ -147,8 +147,8 @@ export default function HistoryPage() {
                 </div>
             </div>
 
-            <div className="bg-surface border border-border rounded-2xl overflow-hidden">
-                <div className="divide-y divide-border">
+            <div className="bg-surface border border-border rounded-2xl overflow-hidden flex-1 min-h-0">
+                <div className="divide-y divide-border overflow-y-auto h-full">
                     {loading ? (
                         <div className="p-6 text-text-muted">Loading history...</div>
                     ) : sortedItems.length === 0 ? (

@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { toFile } from 'openai/uploads';
 
 const nimApiKey = process.env.NVIDIA_NIM_API_KEY ?? process.env.NVIDIA_API_KEY;
 if (!nimApiKey) {
@@ -125,11 +126,35 @@ export const evaluateAnswer = async (questionText: string, userAnswer: string) =
 
 export const transcribeAudio = async (audioFile: File) => {
   try {
-    const transcription = await sttClient.audio.transcriptions.create({
-      file: audioFile,
-      model: nimSttModel,
-      ...(nimSttLanguage ? { language: nimSttLanguage } : {}),
-    });
+    const arrayBuffer = await audioFile.arrayBuffer();
+    const upload = await toFile(
+      Buffer.from(arrayBuffer),
+      audioFile.name || 'recording.webm',
+      { type: audioFile.type || 'audio/webm' }
+    );
+
+    const candidateModels = Array.from(
+      new Set([nimSttModel, 'whisper-large-v3', 'openai/whisper-large-v3'].filter(Boolean))
+    );
+    let transcription: Awaited<ReturnType<typeof sttClient.audio.transcriptions.create>> | null = null;
+    let lastError: unknown = null;
+
+    for (const model of candidateModels) {
+      try {
+        transcription = await sttClient.audio.transcriptions.create({
+          file: upload,
+          model,
+          ...(nimSttLanguage ? { language: nimSttLanguage } : {}),
+        });
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (!transcription) {
+      throw lastError ?? new Error('Transcription provider failed for all configured STT models.');
+    }
 
     const text = typeof transcription?.text === 'string' ? transcription.text.trim() : '';
     if (!text) {
