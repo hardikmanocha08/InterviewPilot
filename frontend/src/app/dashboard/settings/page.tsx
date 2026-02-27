@@ -103,13 +103,14 @@ export default function SettingsPage() {
     }
 
     return (
-        <div className="max-w-3xl h-full overflow-hidden flex flex-col gap-6">
+        <div className="max-w-3xl h-full overflow-hidden flex flex-col gap-4">
             <div>
-                <h1 className="text-3xl font-bold text-white mb-2">Settings</h1>
+                <h1 className="text-3xl font-bold text-white mb-1">Settings</h1>
                 <p className="text-text-muted">Update your interview preferences and profile defaults.</p>
             </div>
 
-            <form onSubmit={saveSettings} className="bg-surface border border-border rounded-2xl p-6 space-y-5 flex-1 overflow-y-auto min-h-0">
+            <form onSubmit={saveSettings} className="bg-surface border border-border rounded-2xl p-5 space-y-4 flex-1 min-h-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label className="text-sm text-text-muted block mb-1">Target Role</label>
                     <select
@@ -189,6 +190,7 @@ export default function SettingsPage() {
                         className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white"
                         placeholder="you@example.com"
                     />
+                </div>
                 </div>
 
                 <div className="space-y-3">

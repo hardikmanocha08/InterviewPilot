@@ -60,7 +60,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 </div>
 
                 <nav className="flex-1 px-4 space-y-2 mt-4">
-                    <Link href="/dashboard" className="flex items-center space-x-3 px-4 py-3 text-text-main bg-white/10 rounded-lg">
+                    <Link
+                        href="/dashboard"
+                        className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                            pathname === '/dashboard'
+                                ? 'text-text-main bg-white/10'
+                                : 'text-text-muted hover:text-text-main hover:bg-white/5'
+                        }`}
+                    >
                         <FiHome className="w-5 h-5" />
                         <span>Dashboard</span>
                     </Link>

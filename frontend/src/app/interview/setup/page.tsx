@@ -78,7 +78,7 @@ export default function InterviewSetup() {
     };
 
     return (
-        <div className="h-screen bg-background flex flex-col items-center py-8 px-4 overflow-hidden">
+        <div className="h-screen bg-background flex flex-col items-center py-6 px-4 overflow-hidden">
             <div className="w-full max-w-2xl mb-6">
                 <button
                     onClick={() => router.push('/dashboard')}
@@ -91,7 +91,7 @@ export default function InterviewSetup() {
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="max-w-2xl w-full text-center mb-12"
+                className="max-w-2xl w-full text-center mb-8"
             >
                 <h1 className="text-4xl font-bold text-white mb-4">Configure Your Interview</h1>
                 <p className="text-text-muted text-lg">Our AI will generate tailored questions based on your profile.</p>
@@ -101,11 +101,11 @@ export default function InterviewSetup() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="max-w-xl w-full bg-surface border border-border rounded-2xl p-8 shadow-xl relative overflow-y-auto"
+                className="max-w-xl w-full bg-surface border border-border rounded-2xl p-6 shadow-xl relative"
             >
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-secondary"></div>
 
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="flex items-center space-x-2 text-sm font-medium text-white mb-2">
                             <FiBriefcase className="text-primary" />

@@ -80,6 +80,7 @@ export default function Dashboard() {
         { label: 'Current Streak', value: `${summary.user.streakCount} day(s)`, icon: FiZap, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
         { label: 'Weakest Role', value: summary.stats.weakestRole, icon: FiTarget, color: 'text-orange-500', bg: 'bg-orange-500/10' },
     ];
+    const recentFive = summary.recentInterviews.slice(0, 5);
 
     return (
         <div className="max-w-6xl mx-auto h-full overflow-hidden flex flex-col gap-6">
@@ -142,32 +143,39 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            <div className="bg-surface rounded-2xl border border-border overflow-hidden flex-1 min-h-0">
-                <div className="p-6 border-b border-border">
+            <div className="bg-surface rounded-2xl border border-border overflow-hidden flex-1 min-h-0 flex flex-col">
+                <div className="p-5 border-b border-border flex items-center justify-between">
                     <h2 className="text-xl font-bold text-white">Recent Interviews</h2>
+                    <span className="text-xs text-text-muted">Last 5 sessions</span>
                 </div>
 
-                <div className="divide-y divide-border overflow-y-auto max-h-full">
-                    {summary.recentInterviews.length > 0 ? summary.recentInterviews.map((interview) => (
-                        <div key={interview._id} className="p-6 flex items-center justify-between hover:bg-white/5 transition-colors">
-                            <div>
-                                <h3 className="font-medium text-white mb-1">{interview.role}</h3>
-                                <p className="text-sm text-text-muted">
-                                    {interview.industryMode} | {new Date(interview.updatedAt).toLocaleString()}
-                                </p>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-sm text-text-muted mb-1">Score</p>
-                                <p className="font-bold text-accent">{Number(interview.score || 0).toFixed(1)}</p>
-                                <Link
-                                    href={`/dashboard/history/${interview._id}`}
-                                    className="inline-block mt-2 text-sm text-primary hover:text-primary-hover"
-                                >
-                                    View Analysis
-                                </Link>
-                            </div>
+                <div className="overflow-y-auto min-h-[252px]">
+                    {recentFive.length > 0 ? (
+                        <div className="divide-y divide-border">
+                            {recentFive.map((interview) => (
+                                <div key={interview._id} className="px-5 py-4 hover:bg-white/5 transition-colors">
+                                    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-4">
+                                        <div className="min-w-0">
+                                            <h3 className="font-semibold text-white truncate">{interview.role}</h3>
+                                            <p className="text-xs text-text-muted truncate">
+                                                {interview.industryMode} • {new Date(interview.updatedAt).toLocaleString()}
+                                            </p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-[11px] text-text-muted">Score</p>
+                                            <p className="font-bold text-accent">{Number(interview.score || 0).toFixed(1)}/10</p>
+                                        </div>
+                                        <Link
+                                            href={`/dashboard/history/${interview._id}`}
+                                            className="text-sm text-primary hover:text-primary-hover whitespace-nowrap"
+                                        >
+                                            View
+                                        </Link>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
-                    )) : (
+                    ) : (
                         <div className="p-6 text-text-muted">No interviews completed yet.</div>
                     )}
                 </div>

@@ -3,6 +3,7 @@ import { authenticate } from '@/lib/server/auth';
 import connectDB from '@/lib/server/db';
 import Interview from '@/lib/server/models/Interview';
 import { evaluateAnswer } from '@/lib/server/utils/ai';
+import { sendEmail } from '@/lib/server/utils/email';
 
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
@@ -117,6 +118,38 @@ export async function POST(
 
   await interview.save();
   await user.save();
+
+  const emailTo = user.settings?.notificationEmail || user.email;
+  const shouldSendEmail = Boolean(emailTo) && (user.settings?.notifications ?? true);
+  if (shouldSendEmail) {
+    const answeredCount = answeredQuestions.length;
+    const analysisLines = interview.questions.map((q, index) => {
+      const scoreText = Number(q.score || 0).toFixed(1);
+      const answerStatus = q.userAnswer?.trim() ? 'Answered' : 'Not answered';
+      const feedback = q.feedback?.trim() || 'No feedback available.';
+      return `${index + 1}. ${q.questionText}\nStatus: ${answerStatus}\nScore: ${scoreText}/10\nFeedback: ${feedback}`;
+    });
+
+    const subject = `InterviewPilot Test Summary - ${interview.role} (${Number(avgScore).toFixed(1)}/10)`;
+    const text = [
+      `Your interview was ${endedReason === 'manual' ? 'submitted' : `ended (${endedReason})`}.`,
+      `Role: ${interview.role}`,
+      `Experience: ${interview.experienceLevel}`,
+      `Industry: ${interview.industryMode}`,
+      `Mode: ${interview.interviewMode}`,
+      `Attempted Questions: ${answeredCount}/${interview.questions.length}`,
+      `Final Score: ${Number(avgScore).toFixed(1)}/10`,
+      '',
+      'Per-question analysis:',
+      ...analysisLines,
+    ].join('\n');
+
+    try {
+      await sendEmail({ to: emailTo, subject, text });
+    } catch (emailError) {
+      console.error('Failed to send interview summary email', emailError);
+    }
+  }
 
   return NextResponse.json({
     interview,
