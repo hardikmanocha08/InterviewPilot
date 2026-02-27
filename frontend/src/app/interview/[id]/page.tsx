@@ -345,18 +345,20 @@ export default function InterviewRoom() {
 
     return (
         <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden relative">
-            <button
-                onClick={() => handleFinishInterview('manual')}
-                disabled={finishing}
-                className="fixed bottom-4 right-4 z-50 bg-red-500 hover:bg-red-600 disabled:opacity-70 text-white px-4 py-2 rounded-lg font-semibold shadow-lg flex items-center space-x-2"
-            >
-                <FiXCircle className="w-5 h-5" />
-                <span>{finishing ? 'Ending...' : 'End Test'}</span>
-            </button>
             {/* Left panel: Info & Progress */}
             <div className="w-full md:w-1/3 bg-surface border-r border-border p-6 flex flex-col h-full overflow-hidden">
                 <div className="mb-8">
-                    <h2 className="text-sm font-semibold text-primary uppercase tracking-wider mb-1">Interview Session</h2>
+                    <div className="flex items-center justify-between gap-3 mb-1">
+                        <h2 className="text-sm font-semibold text-primary uppercase tracking-wider">Interview Session</h2>
+                        <button
+                            onClick={() => handleFinishInterview('manual')}
+                            disabled={finishing}
+                            className="bg-red-500 hover:bg-red-600 disabled:opacity-70 text-white px-3 py-1.5 rounded-lg font-semibold shadow-lg text-xs flex items-center space-x-1.5 whitespace-nowrap"
+                        >
+                            <FiXCircle className="w-4 h-4" />
+                            <span>{finishing ? 'Ending...' : 'End Test'}</span>
+                        </button>
+                    </div>
                     <h1 className="text-2xl font-bold text-white mb-2">{interview.role}</h1>
                     <div className="flex items-center space-x-2 text-sm text-text-muted">
                         <span className="bg-white/10 px-2 py-1 rounded">{interview.experienceLevel}</span>
