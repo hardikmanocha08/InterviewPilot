@@ -18,7 +18,7 @@ type InterviewHistoryItem = {
 export default function HistoryPage() {
     const [items, setItems] = useState<InterviewHistoryItem[]>([]);
     const [sortBy, setSortBy] = useState<'date' | 'score' | 'role' | 'status'>('date');
-    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+    const [sortValue, setSortValue] = useState<string>('newest');
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -49,25 +49,44 @@ export default function HistoryPage() {
         return { completed: completed.length, inProgress, avg };
     }, [items]);
 
+    useEffect(() => {
+        if (sortBy === 'date') setSortValue('newest');
+        if (sortBy === 'role') setSortValue('all');
+        if (sortBy === 'score') setSortValue('all');
+        if (sortBy === 'status') setSortValue('all');
+    }, [sortBy]);
+
     const sortedItems = useMemo(() => {
-        const sorted = [...items].sort((a, b) => {
-            if (sortBy === 'score') {
-                return (a.score || 0) - (b.score || 0);
-            }
+        let result = [...items];
 
-            if (sortBy === 'role') {
-                return a.role.localeCompare(b.role);
-            }
+        if (sortBy === 'date') {
+            result.sort((a, b) => {
+                const diff = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+                return sortValue === 'oldest' ? diff : -diff;
+            });
+            return result;
+        }
 
-            if (sortBy === 'status') {
-                return a.status.localeCompare(b.status);
-            }
+        if (sortBy === 'role' && sortValue !== 'all') {
+            result = result.filter((item) => item.role === sortValue);
+        }
 
-            return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
-        });
+        if (sortBy === 'status' && sortValue !== 'all') {
+            result = result.filter((item) => item.status === sortValue);
+        }
 
-        return sortOrder === 'desc' ? sorted.reverse() : sorted;
-    }, [items, sortBy, sortOrder]);
+        if (sortBy === 'score' && sortValue !== 'all') {
+            result = result.filter((item) => {
+                const score = Number(item.score || 0);
+                if (sortValue === 'high') return score >= 8;
+                if (sortValue === 'medium') return score >= 5 && score < 8;
+                return score < 5;
+            });
+        }
+
+        result.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+        return result;
+    }, [items, sortBy, sortValue]);
 
     return (
         <div className="space-y-6">
@@ -88,12 +107,40 @@ export default function HistoryPage() {
                         <option value="status">Sort by Status</option>
                     </select>
                     <select
-                        value={sortOrder}
-                        onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
+                        value={sortValue}
+                        onChange={(e) => setSortValue(e.target.value)}
                         className="bg-surface border border-border rounded-lg px-4 py-2 text-white"
                     >
-                        <option value="desc">Descending</option>
-                        <option value="asc">Ascending</option>
+                        {sortBy === 'date' && (
+                            <>
+                                <option value="newest">Newest First</option>
+                                <option value="oldest">Oldest First</option>
+                            </>
+                        )}
+                        {sortBy === 'role' && (
+                            <>
+                                <option value="all">All Roles</option>
+                                <option value="Frontend">Frontend</option>
+                                <option value="Backend">Backend</option>
+                                <option value="Fullstack">Fullstack</option>
+                                <option value="Data Science">Data Science</option>
+                            </>
+                        )}
+                        {sortBy === 'score' && (
+                            <>
+                                <option value="all">All Scores</option>
+                                <option value="high">High (8-10)</option>
+                                <option value="medium">Medium (5-7.9)</option>
+                                <option value="low">Low (0-4.9)</option>
+                            </>
+                        )}
+                        {sortBy === 'status' && (
+                            <>
+                                <option value="all">All Status</option>
+                                <option value="completed">Completed</option>
+                                <option value="in-progress">In-progress</option>
+                            </>
+                        )}
                     </select>
                 </div>
             </div>
