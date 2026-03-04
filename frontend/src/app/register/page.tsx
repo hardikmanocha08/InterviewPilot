@@ -1,11 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { motion } from 'framer-motion';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
+import { motion } from 'framer-motion';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useState } from 'react';
 
 type GoogleCredentialResponse = {
     credential?: string;
@@ -170,7 +170,7 @@ export default function Register() {
                             name="name"
                             required
                             className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-primary transition-colors"
-                            placeholder="John Doe"
+                            placeholder="Enter your full name"
                             onChange={handleChange}
                         />
                     </div>
@@ -182,7 +182,7 @@ export default function Register() {
                             name="email"
                             required
                             className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-primary transition-colors"
-                            placeholder="john@example.com"
+                            placeholder="Enter your email"
                             onChange={handleChange}
                         />
                     </div>
