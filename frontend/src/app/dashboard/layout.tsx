@@ -1,10 +1,10 @@
 'use client';
 
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
 import useAuthStore from '@/store/authStore';
 import { usePathname, useRouter } from 'next/navigation';
-import { FiHome, FiTrendingUp, FiSettings, FiLogOut, FiPlusCircle } from 'react-icons/fi';
+import { FiHome, FiTrendingUp, FiSettings, FiLogOut, FiPlusCircle, FiMenu, FiX } from 'react-icons/fi';
 import api from '@/lib/api';
 import Image from 'next/image';
 
@@ -12,11 +12,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     const { user, token, setUser, logout } = useAuthStore();
     const router = useRouter();
     const pathname = usePathname();
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     const handleLogout = () => {
         logout();
         router.push('/login');
     };
+
+    useEffect(() => {
+        // Close mobile menu when route changes
+        setMobileMenuOpen(false);
+    }, [pathname]);
 
     useEffect(() => {
         const loadProfile = async () => {
@@ -49,8 +55,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     }, [user?.settings?.darkMode]);
 
     return (
-        <div className="h-screen bg-background flex overflow-hidden">
-            {/* Sidebar */}
+        <div className="h-screen bg-background flex overflow-hidden relative">
+            {/* Desktop Sidebar */}
             <aside className="w-64 bg-surface border-r border-border hidden md:flex flex-col fixed left-0 top-0 h-screen overflow-hidden">
                 <div className="p-6">
                     <div className="flex items-center gap-3">
@@ -110,10 +116,92 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 </div>
             </aside>
 
+            {/* Mobile Sidebar Overlay */}
+            {mobileMenuOpen && (
+                <div 
+                    className="fixed inset-0 bg-black/50 z-30 md:hidden"
+                    onClick={() => setMobileMenuOpen(false)}
+                />
+            )}
+
+            {/* Mobile Sidebar */}
+            <aside className={`fixed left-0 top-0 h-screen w-64 bg-surface border-r border-border z-40 md:hidden flex flex-col overflow-hidden transform transition-transform duration-300 ${
+                mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+            }`}>
+                <div className="p-4 border-b border-border flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Image src="/interviewpilot-logo.svg" alt="InterviewPilot logo" width={28} height={28} />
+                        <h2 className="text-lg font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">InterviewPilot</h2>
+                    </div>
+                    <button
+                        onClick={() => setMobileMenuOpen(false)}
+                        className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+                    >
+                        <FiX className="w-5 h-5 text-white" />
+                    </button>
+                </div>
+
+                <nav className="flex-1 px-3 space-y-1.5 mt-4 overflow-y-auto">
+                    <Link
+                        href="/dashboard"
+                        className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                            pathname === '/dashboard'
+                                ? 'text-text-main bg-white/10'
+                                : 'text-text-muted hover:text-text-main hover:bg-white/5'
+                        }`}
+                    >
+                        <FiHome className="w-5 h-5 flex-shrink-0" />
+                        <span>Dashboard</span>
+                    </Link>
+                    <Link
+                        href="/dashboard/history"
+                        className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                            pathname?.startsWith('/dashboard/history')
+                                ? 'text-text-main bg-white/5'
+                                : 'text-text-muted hover:text-text-main hover:bg-white/5'
+                        }`}
+                    >
+                        <FiTrendingUp className="w-5 h-5 flex-shrink-0" />
+                        <span>History</span>
+                    </Link>
+                    <Link
+                        href="/dashboard/settings"
+                        className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                            pathname?.startsWith('/dashboard/settings')
+                                ? 'text-text-main bg-white/5'
+                                : 'text-text-muted hover:text-text-main hover:bg-white/5'
+                        }`}
+                    >
+                        <FiSettings className="w-5 h-5 flex-shrink-0" />
+                        <span>Settings</span>
+                    </Link>
+                </nav>
+
+                <div className="p-4 border-t border-border">
+                    <div className="mb-4 px-4 py-2">
+                        <p className="text-sm font-medium text-white">{user?.name || 'User'}</p>
+                        <p className="text-xs text-text-muted">{user?.role || 'Engineer'}</p>
+                    </div>
+                    <button
+                        onClick={handleLogout}
+                        className="flex items-center space-x-3 px-4 py-3 w-full text-red-400 hover:bg-red-400/10 rounded-lg transition-colors text-sm"
+                    >
+                        <FiLogOut className="w-5 h-5 flex-shrink-0" />
+                        <span>Logout</span>
+                    </button>
+                </div>
+            </aside>
+
             {/* Main Content */}
             <main className="flex-1 md:ml-64 h-screen overflow-hidden flex flex-col">
-                <header className="bg-surface/50 backdrop-blur-md border-b border-border sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 md:px-8 py-3 sm:py-4 gap-2">
-                    <div className="md:hidden flex items-center gap-1.5 flex-1">
+                <header className="bg-surface/50 backdrop-blur-md border-b border-border sticky top-0 z-20 flex items-center justify-between px-4 sm:px-6 md:px-8 py-3 sm:py-4 gap-2">
+                    <button
+                        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                        className="md:hidden p-2 hover:bg-white/10 rounded-lg transition-colors"
+                    >
+                        <FiMenu className="w-5 h-5 text-white" />
+                    </button>
+                    <div className="md:hidden flex items-center gap-1.5 flex-1 min-w-0">
                         <Image src="/interviewpilot-logo.svg" alt="InterviewPilot logo" width={20} height={20} />
                         <h2 className="text-sm sm:text-base font-bold text-white truncate">InterviewPilot</h2>
                     </div>
