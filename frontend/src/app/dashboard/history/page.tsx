@@ -84,92 +84,92 @@ export default function HistoryPage() {
     }, [items, sortBy, sortValue]);
 
     return (
-        <div className="h-full overflow-hidden flex flex-col gap-6">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="h-full overflow-hidden flex flex-col gap-3 sm:gap-4 md:gap-6 px-4 sm:px-6 md:px-0">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-white mb-2">Interview History</h1>
-                    <p className="text-text-muted">Review all your interview sessions and performance trends.</p>
+                    <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2">Interview History</h1>
+                    <p className="text-xs sm:text-sm md:text-base text-text-muted">Review all your interview sessions and performance trends.</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5 sm:gap-2 flex-wrap">
                     <select
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value as 'date' | 'score' | 'role')}
-                        className="bg-surface border border-border rounded-lg px-4 py-2 text-white"
+                        className="bg-surface border border-border rounded-lg px-2 sm:px-4 py-1.5 sm:py-2 text-white text-xs sm:text-sm"
                     >
-                        <option value="date">Sort by Date</option>
-                        <option value="score">Sort by Score</option>
-                        <option value="role">Sort by Role</option>
+                        <option value="date">Date</option>
+                        <option value="score">Score</option>
+                        <option value="role">Role</option>
                     </select>
                     <select
                         value={sortValue}
                         onChange={(e) => setSortValue(e.target.value)}
-                        className="bg-surface border border-border rounded-lg px-4 py-2 text-white"
+                        className="bg-surface border border-border rounded-lg px-2 sm:px-4 py-1.5 sm:py-2 text-white text-xs sm:text-sm"
                     >
                         {sortBy === 'date' && (
                             <>
-                                <option value="newest">Newest First</option>
-                                <option value="oldest">Oldest First</option>
+                                <option value="newest">Newest</option>
+                                <option value="oldest">Oldest</option>
                             </>
                         )}
                         {sortBy === 'role' && (
                             <>
-                                <option value="all">All Roles</option>
+                                <option value="all">All</option>
                                 <option value="Frontend">Frontend</option>
                                 <option value="Backend">Backend</option>
-                                <option value="Fullstack">Fullstack</option>
-                                <option value="Data Science">Data Science</option>
+                                <option value="Fullstack">Full Stack</option>
+                                <option value="Data Science">DS</option>
                             </>
                         )}
                         {sortBy === 'score' && (
                             <>
-                                <option value="all">All Scores</option>
-                                <option value="high">High (8-10)</option>
-                                <option value="medium">Medium (5-7.9)</option>
-                                <option value="low">Low (0-4.9)</option>
+                                <option value="all">All</option>
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
                             </>
                         )}
                     </select>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-surface border border-border rounded-xl p-4">
-                    <p className="text-text-muted text-sm">Completed</p>
-                    <p className="text-2xl text-white font-bold">{summary.completed}</p>
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-4">
+                <div className="bg-surface border border-border rounded-lg md:rounded-xl p-2 sm:p-4">
+                    <p className="text-text-muted text-xs sm:text-sm">Completed</p>
+                    <p className="text-lg sm:text-2xl text-white font-bold">{summary.completed}</p>
                 </div>
-                <div className="bg-surface border border-border rounded-xl p-4">
-                    <p className="text-text-muted text-sm">In-progress</p>
-                    <p className="text-2xl text-white font-bold">{summary.inProgress}</p>
+                <div className="bg-surface border border-border rounded-lg md:rounded-xl p-2 sm:p-4">
+                    <p className="text-text-muted text-xs sm:text-sm">In-progress</p>
+                    <p className="text-lg sm:text-2xl text-white font-bold">{summary.inProgress}</p>
                 </div>
-                <div className="bg-surface border border-border rounded-xl p-4">
-                    <p className="text-text-muted text-sm">Average score</p>
-                    <p className="text-2xl text-white font-bold">{summary.avg.toFixed(2)}/10</p>
+                <div className="bg-surface border border-border rounded-lg md:rounded-xl p-2 sm:p-4">
+                    <p className="text-text-muted text-xs sm:text-sm">Average</p>
+                    <p className="text-lg sm:text-2xl text-white font-bold">{summary.avg.toFixed(2)}</p>
                 </div>
             </div>
 
-            <div className="bg-surface border border-border rounded-2xl overflow-hidden flex-1 min-h-0">
+            <div className="bg-surface border border-border rounded-lg md:rounded-2xl overflow-hidden flex-1 min-h-0">
                 <div className="divide-y divide-border overflow-y-auto h-full">
                     {loading ? (
-                        <div className="p-6 text-text-muted">Loading history...</div>
+                        <div className="p-4 sm:p-6 text-text-muted text-sm">Loading history...</div>
                     ) : sortedItems.length === 0 ? (
-                        <div className="p-6 text-text-muted">No interview history yet.</div>
+                        <div className="p-4 sm:p-6 text-text-muted text-sm">No interview history yet.</div>
                     ) : (
                         sortedItems.map((item) => (
-                            <div key={item._id} className="p-6 flex items-center justify-between">
-                                <div>
-                                    <p className="text-white font-medium">{item.role}</p>
-                                    <p className="text-text-muted text-sm">
+                            <div key={item._id} className="p-3 sm:p-4 md:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
+                                <div className="min-w-0">
+                                    <p className="text-white font-medium text-sm sm:text-base truncate">{item.role}</p>
+                                    <p className="text-text-muted text-xs sm:text-sm truncate">
                                         {item.experienceLevel} | {item.industryMode} | {new Date(item.updatedAt).toLocaleString()}
                                     </p>
                                 </div>
-                                <div className="text-right">
-                                    <p className="text-sm text-text-muted capitalize">{item.status}</p>
-                                    <p className="font-bold text-accent">{Number(item.score || 0).toFixed(1)}</p>
+                                <div className="text-right flex items-center justify-between sm:flex-col">
+                                    <p className="text-xs sm:text-sm text-text-muted capitalize">{item.status}</p>
+                                    <p className="font-bold text-accent text-sm sm:text-base">{Number(item.score || 0).toFixed(1)}</p>
                                     <Link
                                         href={`/dashboard/history/${item._id}`}
-                                        className="inline-block mt-2 text-sm text-primary hover:text-primary-hover"
+                                        className="inline-block text-xs sm:text-sm text-primary hover:text-primary-hover mt-0 sm:mt-2"
                                     >
-                                        View Analysis
+                                        View
                                     </Link>
                                 </div>
                             </div>

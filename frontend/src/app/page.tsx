@@ -8,43 +8,43 @@ export default function Home() {
       <div className="pointer-events-none absolute bottom-0 left-0 h-[24rem] w-[24rem] rounded-full bg-blue-500/20 blur-[130px]" />
       <div className="pointer-events-none absolute right-0 top-20 h-[20rem] w-[20rem] rounded-full bg-emerald-400/15 blur-[110px]" />
 
-      <main className="relative mx-auto flex h-screen w-full max-w-7xl flex-col px-5 py-5 md:px-8 md:py-6 lg:px-12">
-        <header className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Image src="/interviewpilot-logo.svg" alt="InterviewPilot logo" width={52} height={52} priority />
-            <span className="text-xl font-bold tracking-tight md:text-2xl">InterviewPilot</span>
+      <main className="relative mx-auto flex h-screen w-full max-w-7xl flex-col px-4 py-4 sm:px-5 sm:py-5 md:px-8 md:py-6 lg:px-12">
+        <header className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Image src="/interviewpilot-logo.svg" alt="InterviewPilot logo" width={40} height={40} priority className="sm:w-[52px] sm:h-[52px]" />
+            <span className="text-lg sm:text-xl font-bold tracking-tight md:text-2xl">InterviewPilot</span>
           </div>
           <Link
             href="/login"
-            className="rounded-xl border border-white/20 px-5 py-2.5 text-sm font-medium text-text-main transition-colors hover:bg-white/10"
+            className="rounded-lg sm:rounded-xl border border-white/20 px-3 sm:px-5 py-1.5 sm:py-2.5 text-xs sm:text-sm font-medium text-text-main transition-colors hover:bg-white/10"
           >
             Sign In
           </Link>
         </header>
 
-        <section className="grid flex-1 items-center gap-6 py-4 md:gap-8 lg:grid-cols-[1.12fr_0.88fr] lg:gap-10">
+        <section className="grid flex-1 items-center gap-4 sm:gap-6 py-3 sm:py-4 md:gap-8 lg:grid-cols-[1.12fr_0.88fr] lg:gap-10">
           <div>
-            <p className="mb-3 inline-flex rounded-full border border-cyan-200/30 bg-cyan-300/10 px-3 py-1 text-xs font-medium text-cyan-100 md:mb-5 md:px-4 md:py-1.5 md:text-sm">
+            <p className="mb-2 sm:mb-3 inline-flex rounded-full border border-cyan-200/30 bg-cyan-300/10 px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-cyan-100 md:mb-5 md:px-4 md:py-1.5 md:text-sm">
               AI-powered mock interviews for real outcomes
             </p>
-            <h1 className="text-3xl font-bold leading-[1.08] tracking-tight sm:text-4xl md:text-5xl xl:text-6xl">
+            <h1 className="text-2xl sm:text-3xl font-bold leading-[1.08] tracking-tight md:text-4xl lg:text-5xl xl:text-6xl">
               Build interview confidence with full-screen focus and instant feedback
             </h1>
-            <p className="mt-4 max-w-2xl text-base leading-relaxed text-slate-200 md:mt-6 md:text-lg">
+            <p className="mt-3 sm:mt-4 max-w-2xl text-sm sm:text-base leading-relaxed text-slate-200 md:mt-6 md:text-lg">
               Generate role-specific questions, answer naturally by voice or text, and get structured AI evaluation
               after every response.
             </p>
 
-            <div className="mt-6 flex flex-wrap gap-3 md:mt-8 md:gap-4">
+            <div className="mt-4 sm:mt-6 flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3 md:mt-8 md:gap-4">
               <Link
                 href="/register"
-                className="rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-white shadow-[0_15px_40px_-15px_rgba(59,130,246,0.8)] transition-all hover:-translate-y-0.5 hover:bg-primary-hover md:rounded-2xl md:px-8 md:py-4 md:text-base"
+                className="rounded-lg sm:rounded-xl bg-primary px-4 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold text-white shadow-[0_15px_40px_-15px_rgba(59,130,246,0.8)] transition-all hover:-translate-y-0.5 hover:bg-primary-hover md:rounded-2xl md:px-8 md:py-4 md:text-base text-center"
               >
                 Start Free Session
               </Link>
               <Link
                 href="/login"
-                className="rounded-xl border border-white/25 px-6 py-3 text-sm font-semibold text-slate-100 transition-colors hover:bg-white/10 md:rounded-2xl md:px-8 md:py-4 md:text-base"
+                className="rounded-lg sm:rounded-xl border border-white/25 px-4 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold text-slate-100 transition-colors hover:bg-white/10 md:rounded-2xl md:px-8 md:py-4 md:text-base text-center"
               >
                 Continue Practice
               </Link>

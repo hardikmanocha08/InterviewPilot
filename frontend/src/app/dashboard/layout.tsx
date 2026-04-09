@@ -112,28 +112,27 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
             {/* Main Content */}
             <main className="flex-1 md:ml-64 h-screen overflow-hidden flex flex-col">
-                <header className="bg-surface/50 backdrop-blur-md border-b border-border sticky top-0 z-10 flex items-center justify-between px-8 py-4">
-                    <div className="md:hidden">
-                        <div className="flex items-center gap-2">
-                            <Image src="/interviewpilot-logo.svg" alt="InterviewPilot logo" width={24} height={24} />
-                            <h2 className="text-xl font-bold text-white">InterviewPilot</h2>
-                        </div>
+                <header className="bg-surface/50 backdrop-blur-md border-b border-border sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 md:px-8 py-3 sm:py-4 gap-2">
+                    <div className="md:hidden flex items-center gap-1.5 flex-1">
+                        <Image src="/interviewpilot-logo.svg" alt="InterviewPilot logo" width={20} height={20} />
+                        <h2 className="text-sm sm:text-base font-bold text-white truncate">InterviewPilot</h2>
                     </div>
-                    <div className="hidden md:block">
+                    <div className="hidden md:block flex-1">
                         {/* Breadcrumbs or greeting could go here */}
-                        <p className="text-text-muted">Welcome back, <span className="text-white font-medium">{user?.name}</span></p>
+                        <p className="text-text-muted text-sm">Welcome back, <span className="text-white font-medium">{user?.name}</span></p>
                     </div>
 
                     <Link
                         href="/interview/setup"
-                        className="flex items-center space-x-2 bg-primary hover:bg-primary-hover text-white px-4 py-2 rounded-lg transition-colors shadow-lg shadow-primary/20"
+                        className="flex items-center space-x-1 sm:space-x-2 bg-primary hover:bg-primary-hover text-white px-3 sm:px-4 py-2 rounded-lg transition-colors shadow-lg shadow-primary/20 text-xs sm:text-sm whitespace-nowrap flex-shrink-0"
                     >
-                        <FiPlusCircle className="w-5 h-5" />
-                        <span>New Interview</span>
+                        <FiPlusCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                        <span className="hidden sm:inline">New Interview</span>
+                        <span className="sm:hidden">New</span>
                     </Link>
                 </header>
 
-                <div className="p-8 flex-1 overflow-hidden">
+                <div className="p-4 sm:p-6 md:p-8 flex-1 overflow-hidden">
                     {children}
                 </div>
             </main>

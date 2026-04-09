@@ -278,53 +278,54 @@ export default function InterviewRoom() {
         : 0;
 
     return (
-        <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden relative">
+        <div className="min-h-screen bg-background flex flex-col md:flex-row overflow-hidden relative">
             {/* Left panel: Info  & Progress */}
-            <div className="w-full md:w-1/3 bg-surface border-r border-border p-6 flex flex-col h-full overflow-hidden">
-                <div className="mb-8">
-                    <div className="flex items-center justify-between gap-3 mb-1">
-                        <h2 className="text-sm font-semibold text-primary uppercase tracking-wider">Interview Session</h2>
+            <div className="w-full md:w-1/3 bg-surface border-b md:border-b-0 md:border-r border-border p-3 sm:p-4 md:p-6 flex flex-col h-auto md:h-full overflow-hidden">
+                <div className="mb-4 md:mb-8">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                        <h2 className="text-xs sm:text-sm font-semibold text-primary uppercase tracking-wider">Interview</h2>
                         <button
                             onClick={() => handleFinishInterview('manual')}
                             disabled={finishing}
-                            className="bg-red-500 hover:bg-red-600 disabled:opacity-70 text-white px-3 py-1.5 rounded-lg font-semibold shadow-lg text-xs flex items-center space-x-1.5 whitespace-nowrap"
+                            className="bg-red-500 hover:bg-red-600 disabled:opacity-70 text-white px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg font-semibold shadow-lg text-xs flex items-center space-x-1 whitespace-nowrap flex-shrink-0"
                         >
-                            <FiXCircle className="w-4 h-4" />
-                            <span>{finishing ? 'Ending...' : 'End Test'}</span>
+                            <FiXCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+                            <span className="hidden sm:inline">{finishing ? 'Ending...' : 'End Test'}</span>
+                            <span className="sm:hidden">{finishing ? '...' : 'End'}</span>
                         </button>
                     </div>
-                    <h1 className="text-2xl font-bold text-white mb-2">{interview.role}</h1>
-                    <div className="flex items-center space-x-2 text-sm text-text-muted">
-                        <span className="bg-white/10 px-2 py-1 rounded">{interview.experienceLevel}</span>
-                        <span>|</span>
+                    <h1 className="text-xl sm:text-2xl font-bold text-white mb-1.5 sm:mb-2">{interview.role}</h1>
+                    <div className="flex items-center flex-wrap gap-1.5 sm:gap-2 text-xs sm:text-sm text-text-muted">
+                        <span className="bg-white/10 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">{interview.experienceLevel}</span>
+                        <span className="hidden sm:inline">|</span>
                         <span className="capitalize">{interview.interviewMode}</span>
                         {interview.interviewMode !== 'untimed' && timeLeftSeconds !== null && (
                             <>
-                                <span>|</span>
+                                <span className="hidden sm:inline">|</span>
                                 <span className={`font-semibold ${timeLeftSeconds <= 20 ? 'text-red-400' : 'text-accent'}`}>
                                     {formattedTime} left
                                 </span>
                             </>
                         )}
-                        <span>|</span>
-                        <span>Question {currentQuestionIndex + 1} of {interview.questions.length}</span>
+                        <span className="hidden sm:inline">|</span>
+                        <span>Q{currentQuestionIndex + 1}/{interview.questions.length}</span>
                     </div>
                 </div>
 
                 {/* Progress List */}
-                <div className="flex-1 overflow-y-auto pr-2 space-y-4">
+                <div className="hidden md:flex flex-1 overflow-y-auto pr-2 space-y-3 md:space-y-4">
                     {interview.questions.map((q: any, idx: number) => (
                         <div
                             key={idx}
-                            className={`p-4 rounded-xl border ${idx === currentQuestionIndex ? 'border-primary bg-primary/5' : 'border-border bg-background'} transition-colors`}
+                            className={`p-3 md:p-4 rounded-lg md:rounded-xl border ${idx === currentQuestionIndex ? 'border-primary bg-primary/5' : 'border-border bg-background'} transition-colors`}
                         >
-                            <div className="flex items-center justify-between mb-2">
-                                <span className={`text-sm font-medium ${idx === currentQuestionIndex ? 'text-primary' : 'text-text-muted'}`}>
-                                    Question {idx + 1}
+                            <div className="flex items-center justify-between mb-1.5 md:mb-2">
+                                <span className={`text-xs md:text-sm font-medium ${idx === currentQuestionIndex ? 'text-primary' : 'text-text-muted'}`}>
+                                    Q{idx + 1}
                                 </span>
-                                {q.userAnswer && <FiCheckCircle className="text-green-500 w-5 h-5" />}
+                                {q.userAnswer && <FiCheckCircle className="text-green-500 w-4 h-4 md:w-5 md:h-5" />}
                             </div>
-                            <p className="text-sm text-white line-clamp-2">{q.questionText}</p>
+                            <p className="text-xs md:text-sm text-white line-clamp-2">{q.questionText}</p>
                         </div>
                     ))}
                 </div>
@@ -333,39 +334,39 @@ export default function InterviewRoom() {
             {/* Right panel: Chat / Interaction Area */}
             <div className="w-full md:w-2/3 flex flex-col h-full">
                 {interview.interviewMode !== 'untimed' && timeLeftSeconds !== null && (
-                    <div className="px-6 md:px-10 pt-6">
-                        <div className="bg-surface border border-border rounded-2xl p-4">
-                            <div className="flex items-center justify-between mb-3">
-                                <p className="text-sm text-text-muted">Question Timer</p>
-                                <p className={`text-2xl font-bold ${timeLeftSeconds <= 20 ? 'text-red-400' : 'text-primary'}`}>
+                    <div className="px-3 sm:px-4 md:px-10 pt-3 sm:pt-4 md:pt-6">
+                        <div className="bg-surface border border-border rounded-lg md:rounded-2xl p-3 md:p-4">
+                            <div className="flex items-center justify-between mb-2 md:mb-3">
+                                <p className="text-xs md:text-sm text-text-muted">Question Timer</p>
+                                <p className={`text-lg md:text-2xl font-bold ${timeLeftSeconds <= 20 ? 'text-red-400' : 'text-primary'}`}>
                                     {formattedTime}
                                 </p>
                             </div>
-                            <div className="h-2 w-full bg-background rounded-full overflow-hidden">
+                            <div className="h-1.5 md:h-2 w-full bg-background rounded-full overflow-hidden">
                                 <div
                                     className={`h-full transition-all ${timeLeftSeconds <= 20 ? 'bg-red-500' : 'bg-primary'}`}
                                     style={{ width: `${timerPercent}%` }}
                                 />
                             </div>
-                            <p className="text-xs text-text-muted mt-2">
-                                Time up will auto-skip this question. Last question auto-submits interview.
+                            <p className="text-[10px] md:text-xs text-text-muted mt-1.5 md:mt-2">
+                                Time up will auto-skip. Last question auto-submits interview.
                             </p>
                         </div>
                     </div>
                 )}
-                <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8">
+                <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-10 space-y-4 md:space-y-8">
 
                     {/* AI Question Bubble */}
                     <motion.div
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
-                        className="flex flex-col space-y-2 max-w-2xl"
+                        className="flex flex-col space-y-1.5 md:space-y-2 max-w-2xl"
                     >
-                        <div className="flex items-center space-x-2">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white text-xs font-bold">AI</div>
-                            <span className="text-sm font-medium text-text-muted">Interviewer</span>
+                        <div className="flex items-center space-x-1.5 md:space-x-2">
+                            <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white text-[10px] md:text-xs font-bold">AI</div>
+                            <span className="text-xs md:text-sm font-medium text-text-muted">Interviewer</span>
                         </div>
-                        <div className="bg-surface border border-border p-5 rounded-2xl rounded-tl-sm text-white text-lg leading-relaxed">
+                        <div className="bg-surface border border-border p-3 md:p-5 rounded-lg md:rounded-2xl rounded-tl-sm text-white text-sm md:text-lg leading-relaxed">
                             {currentQ.questionText}
                         </div>
                     </motion.div>

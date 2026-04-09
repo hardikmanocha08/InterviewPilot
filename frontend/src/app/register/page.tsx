@@ -144,67 +144,67 @@ export default function Register() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="min-h-screen flex items-center justify-center p-3 sm:p-4 md:p-6">
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5 }}
-                className="max-w-md w-full bg-surface p-8 rounded-2xl shadow-xl border border-border"
+                className="w-full max-w-md bg-surface p-6 sm:p-8 rounded-xl sm:rounded-2xl shadow-xl border border-border max-h-[95vh] overflow-y-auto"
             >
-                <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold text-white mb-2">Create an Account</h1>
-                    <p className="text-text-muted">Start your AI interview preparation journey</p>
+                <div className="text-center mb-6 sm:mb-8">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2">Create an Account</h1>
+                    <p className="text-xs sm:text-sm text-text-muted">Start your AI interview preparation journey</p>
                 </div>
 
                 {error && (
-                    <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded-lg mb-6 text-sm">
+                    <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-2 sm:p-3 rounded-lg mb-4 sm:mb-6 text-xs sm:text-sm">
                         {error}
                     </div>
                 )}
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
                     <div>
-                        <label className="block text-sm font-medium text-text-muted mb-1">Full Name</label>
+                        <label className="block text-xs sm:text-sm font-medium text-text-muted mb-1">Full Name</label>
                         <input
                             type="text"
                             name="name"
                             required
-                            className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-primary transition-colors"
+                            className="w-full bg-background border border-border rounded-lg px-3 sm:px-4 py-2 sm:py-2.5 text-white text-sm focus:outline-none focus:border-primary transition-colors"
                             placeholder="Enter your full name"
                             onChange={handleChange}
                         />
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-text-muted mb-1">Email</label>
+                        <label className="block text-xs sm:text-sm font-medium text-text-muted mb-1">Email</label>
                         <input
                             type="email"
                             name="email"
                             required
-                            className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-primary transition-colors"
+                            className="w-full bg-background border border-border rounded-lg px-3 sm:px-4 py-2 sm:py-2.5 text-white text-sm focus:outline-none focus:border-primary transition-colors"
                             placeholder="Enter your email"
                             onChange={handleChange}
                         />
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-text-muted mb-1">Password</label>
+                        <label className="block text-xs sm:text-sm font-medium text-text-muted mb-1">Password</label>
                         <input
                             type="password"
                             name="password"
                             required
-                            className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-primary transition-colors"
+                            className="w-full bg-background border border-border rounded-lg px-3 sm:px-4 py-2 sm:py-2.5 text-white text-sm focus:outline-none focus:border-primary transition-colors"
                             placeholder="••••••••"
                             onChange={handleChange}
                         />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-2 sm:gap-3">
                         <div>
-                            <label className="block text-sm font-medium text-text-muted mb-1">Target Role</label>
+                            <label className="block text-xs sm:text-sm font-medium text-text-muted mb-1">Target Role</label>
                             <select
                                 name="role"
-                                className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-primary transition-colors appearance-none"
+                                className="w-full bg-background border border-border rounded-lg px-2 sm:px-4 py-2 sm:py-2.5 text-white text-xs sm:text-sm focus:outline-none focus:border-primary transition-colors appearance-none"
                                 onChange={handleChange}
                             >
                                 <option value="Frontend">Frontend Engineer</option>
@@ -215,10 +215,10 @@ export default function Register() {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-text-muted mb-1">Experience</label>
+                            <label className="block text-xs sm:text-sm font-medium text-text-muted mb-1">Experience</label>
                             <select
                                 name="experienceLevel"
-                                className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-primary transition-colors appearance-none"
+                                className="w-full bg-background border border-border rounded-lg px-2 sm:px-4 py-2 sm:py-2.5 text-white text-xs sm:text-sm focus:outline-none focus:border-primary transition-colors appearance-none"
                                 onChange={handleChange}
                             >
                                 <option value="Fresher">Fresher</option>
@@ -230,10 +230,10 @@ export default function Register() {
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-text-muted mb-1">Industry Mode</label>
+                        <label className="block text-xs sm:text-sm font-medium text-text-muted mb-1">Industry Mode</label>
                         <select
                             name="industryMode"
-                            className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-primary transition-colors appearance-none"
+                            className="w-full bg-background border border-border rounded-lg px-3 sm:px-4 py-2 sm:py-2.5 text-white text-xs sm:text-sm focus:outline-none focus:border-primary transition-colors appearance-none"
                             onChange={handleChange}
                         >
                             <option value="Product company">Product company</option>
@@ -246,7 +246,7 @@ export default function Register() {
                     <button
                         type="submit"
                         disabled={loading}
-                        className="w-full bg-primary hover:bg-primary-hover text-white font-medium py-3 rounded-lg transition-colors mt-6 flex justify-center items-center h-12"
+                        className="w-full bg-primary hover:bg-primary-hover text-white font-medium py-2 sm:py-3 rounded-lg transition-colors mt-4 sm:mt-6 flex justify-center items-center h-10 sm:h-12 text-sm"
                     >
                         {loading ? (
                             <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -259,7 +259,7 @@ export default function Register() {
 
                 {googleClientId && (
                     <>
-                        <div className="my-6 flex items-center gap-3">
+                        <div className="my-4 sm:my-6 flex items-center gap-3">
                             <div className="h-px flex-1 bg-border" />
                             <span className="text-xs text-text-muted uppercase tracking-wide">or</span>
                             <div className="h-px flex-1 bg-border" />
@@ -268,7 +268,7 @@ export default function Register() {
                     </>
                 )}
 
-                <p className="mt-6 text-center text-text-muted text-sm">
+                <p className="mt-4 sm:mt-6 text-center text-text-muted text-xs sm:text-sm">
                     Already have an account? <Link href="/login" className="text-primary hover:text-primary-hover font-medium">Log in</Link>
                 </p>
             </motion.div>
