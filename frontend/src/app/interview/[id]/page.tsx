@@ -313,11 +313,11 @@ export default function InterviewRoom() {
                 </div>
 
                 {/* Progress List */}
-                <div className="hidden md:flex flex-1 overflow-y-auto pr-2 space-y-2">
+                <div className="hidden md:grid grid-cols-3 gap-2 mb-6">
                     {interview.questions.map((q: any, idx: number) => (
                         <div
                             key={idx}
-                            className={`p-2.5 md:p-3 rounded-lg border cursor-pointer hover:border-primary/50 transition-colors ${idx === currentQuestionIndex ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}
+                            className={`p-2 rounded-lg border cursor-pointer hover:border-primary/50 transition-colors ${idx === currentQuestionIndex ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}
                         >
                             <div className="flex items-center justify-between mb-1">
                                 <span className={`text-xs font-medium ${idx === currentQuestionIndex ? 'text-primary' : 'text-text-muted'}`}>
@@ -325,7 +325,7 @@ export default function InterviewRoom() {
                                 </span>
                                 {q.userAnswer && <FiCheckCircle className="text-green-500 w-3.5 h-3.5" />}
                             </div>
-                            <p className="text-xs text-white line-clamp-2 leading-tight">{q.questionText}</p>
+                            <p className="text-xs text-white line-clamp-3 leading-tight">{q.questionText}</p>
                         </div>
                     ))}
                 </div>
