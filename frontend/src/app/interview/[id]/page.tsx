@@ -278,7 +278,7 @@ export default function InterviewRoom() {
         : 0;
 
     return (
-        <div className="min-h-screen bg-background flex flex-col md:flex-row overflow-hidden relative">
+        <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden relative">
             {/* Left panel: Info  & Progress */}
             <div className="w-full md:w-1/3 bg-surface border-b md:border-b-0 md:border-r border-border p-3 sm:p-4 md:p-6 flex flex-col h-auto md:h-full overflow-hidden">
                 <div className="mb-4 md:mb-8">
@@ -332,10 +332,10 @@ export default function InterviewRoom() {
             </div>
 
             {/* Right panel: Chat / Interaction Area */}
-            <div className="w-full md:w-2/3 flex flex-col h-full">
+            <div className="w-full md:w-2/3 flex flex-col h-auto md:h-full">
                 {interview.interviewMode !== 'untimed' && timeLeftSeconds !== null && (
-                    <div className="px-3 sm:px-4 md:px-10 pt-3 sm:pt-4 md:pt-6">
-                        <div className="bg-surface border border-border rounded-lg md:rounded-2xl p-3 md:p-4">
+                    <div className="px-3 sm:px-4 md:px-10 py-3 sm:py-4 md:py-4 flex-shrink-0">
+                        <div className="bg-surface border border-border rounded-lg md:rounded-2xl p-3 md:p-3">
                             <div className="flex items-center justify-between mb-2 md:mb-3">
                                 <p className="text-xs md:text-sm text-text-muted">Question Timer</p>
                                 <p className={`text-lg md:text-2xl font-bold ${timeLeftSeconds <= 20 ? 'text-red-400' : 'text-primary'}`}>
@@ -354,7 +354,7 @@ export default function InterviewRoom() {
                         </div>
                     </div>
                 )}
-                <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-10 space-y-4 md:space-y-8">
+                <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-10 space-y-4 md:space-y-6">
 
                     {/* AI Question Bubble */}
                     <motion.div
