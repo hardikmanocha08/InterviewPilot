@@ -451,7 +451,7 @@ export default function InterviewRoom() {
                 </div>
 
                 {/* Input Area */}
-                <div className="p-6 border-t border-border bg-surface/50 backdrop-blur-md">
+                <div className="p-3 sm:p-4 md:p-6 border-t border-border bg-surface/50 backdrop-blur-md flex-shrink-0">
                     {!isAnswered ? (
                         <div className="relative flex flex-col items-end">
                             <textarea
@@ -459,7 +459,7 @@ export default function InterviewRoom() {
                                 onChange={(e) => setAnswerInput(e.target.value)}
                                 placeholder="Type your answer here..."
                                 disabled={evaluating || finishing}
-                                className="w-full bg-background border border-border rounded-xl px-4 py-4 pr-16 text-white focus:outline-none focus:border-primary resize-none min-h-[120px] transition-colors"
+                                className="w-full bg-background border border-border rounded-xl px-4 py-4 pr-16 text-white focus:outline-none focus:border-primary resize-none min-h-[100px] sm:min-h-[110px] md:min-h-[120px] max-h-[200px] transition-colors"
                             />
 
                             <div className="absolute bottom-4 right-4 flex space-x-2">
