@@ -7,7 +7,7 @@ if (!nimApiKey) {
 }
 
 const nimBaseUrl = process.env.NVIDIA_NIM_BASE_URL ?? 'https://integrate.api.nvidia.com/v1';
-const nimModel = process.env.NVIDIA_NIM_MODEL ?? 'meta/llama-3.1-70b-instruct';
+const nimModel = process.env.NVIDIA_NIM_MODEL ?? 'meta/llama3-8b-instruct';
 const sttApiKey = process.env.NVIDIA_NIM_STT_API_KEY ?? nimApiKey;
 const sttBaseUrl = process.env.NVIDIA_NIM_STT_BASE_URL ?? nimBaseUrl;
 const nimSttModel = process.env.NVIDIA_NIM_STT_MODEL ?? 'whisper-large-v3';
@@ -58,7 +58,12 @@ export const generateInterviewQuestions = async (
       questionText: q.questionText,
     }));
   } catch (error) {
-    console.error('AI question generation error:', error);
+    console.error('AI question generation error:', {
+      status: error && typeof error === 'object' && 'status' in error ? (error as any).status : 'unknown',
+      baseURL: nimBaseUrl,
+      model: nimModel,
+      originalError: error,
+    });
     throw new Error('Failed to generate interview questions');
   }
 };
