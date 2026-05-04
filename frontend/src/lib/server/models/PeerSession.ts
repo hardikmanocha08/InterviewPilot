@@ -34,6 +34,18 @@ export interface IPeerSession extends Document {
     mimeType: string;
     createdAt: Date;
   }[];
+  candidatePcmPackets?: {
+    id: string;
+    data: string;
+    sampleRate: number;
+    createdAt: Date;
+  }[];
+  interviewerPcmPackets?: {
+    id: string;
+    data: string;
+    sampleRate: number;
+    createdAt: Date;
+  }[];
   interviewerFeedback?: {
     overallScore: number;
     communication: string;
@@ -147,6 +159,28 @@ const peerSessionSchema = new mongoose.Schema<IPeerSession>(
           id: String,
           data: String,
           mimeType: String,
+          createdAt: Date,
+        },
+      ],
+      default: [],
+    },
+    candidatePcmPackets: {
+      type: [
+        {
+          id: String,
+          data: String,
+          sampleRate: Number,
+          createdAt: Date,
+        },
+      ],
+      default: [],
+    },
+    interviewerPcmPackets: {
+      type: [
+        {
+          id: String,
+          data: String,
+          sampleRate: Number,
           createdAt: Date,
         },
       ],

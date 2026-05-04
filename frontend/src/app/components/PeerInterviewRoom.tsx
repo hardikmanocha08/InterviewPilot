@@ -25,12 +25,21 @@ interface PeerSessionState {
   interviewerIceCandidates?: string[];
   candidateAudioChunks?: PeerAudioChunk[];
   interviewerAudioChunks?: PeerAudioChunk[];
+  candidatePcmPackets?: PeerPcmPacket[];
+  interviewerPcmPackets?: PeerPcmPacket[];
 }
 
 interface PeerAudioChunk {
   id: string;
   data: string;
   mimeType: string;
+  createdAt?: string;
+}
+
+interface PeerPcmPacket {
+  id: string;
+  data: string;
+  sampleRate: number;
   createdAt?: string;
 }
 
@@ -70,10 +79,22 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const remoteMeterFrameRef = useRef<number | null>(null);
   const lastMicLevelPatchRef = useRef(0);
   const audioRelayRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioRelayRunningRef = useRef(false);
+  const audioRelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pcmRelayContextRef = useRef<AudioContext | null>(null);
+  const pcmRelayProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const pcmRelaySourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const pcmRelaySilentGainRef = useRef<GainNode | null>(null);
+  const pcmPacketSendingRef = useRef(false);
+  const lastPcmPacketAtRef = useRef(0);
   const playedRelayChunkIdsRef = useRef(new Set<string>());
+  const playedPcmPacketIdsRef = useRef(new Set<string>());
   const relayQueueRef = useRef<PeerAudioChunk[]>([]);
+  const pcmQueueRef = useRef<PeerPcmPacket[]>([]);
   const relayPlayingRef = useRef(false);
+  const pcmPlayingRef = useRef(false);
   const relayNextStartTimeRef = useRef(0);
+  const pcmNextStartTimeRef = useRef(0);
 
   const patchSession = useCallback(async (payload: Record<string, unknown>) => {
     const res = await api.patch(`/peer-sessions/${sessionId}/state`, payload);
@@ -93,6 +114,37 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     return response.arrayBuffer();
   };
 
+  const floatSamplesToBase64Pcm = (samples: Float32Array) => {
+    const bytes = new Uint8Array(samples.length * 2);
+    const view = new DataView(bytes.buffer);
+
+    for (let index = 0; index < samples.length; index += 1) {
+      const clamped = Math.max(-1, Math.min(1, samples[index]));
+      view.setInt16(index * 2, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true);
+    }
+
+    let binary = '';
+    for (let index = 0; index < bytes.length; index += 1) {
+      binary += String.fromCharCode(bytes[index]);
+    }
+    return btoa(binary);
+  };
+
+  const base64PcmToFloatSamples = (base64: string) => {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+
+    const view = new DataView(bytes.buffer);
+    const samples = new Float32Array(bytes.length / 2);
+    for (let index = 0; index < samples.length; index += 1) {
+      samples[index] = view.getInt16(index * 2, true) / 0x8000;
+    }
+    return samples;
+  };
+
   const ensureRelayAudioContext = useCallback(() => {
     if (relayAudioContextRef.current) {
       void relayAudioContextRef.current.resume();
@@ -108,6 +160,56 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     });
     return audioContext;
   }, []);
+
+  const playPcmQueue = useCallback(async () => {
+    if (pcmPlayingRef.current) {
+      return;
+    }
+
+    pcmPlayingRef.current = true;
+    const audioContext = ensureRelayAudioContext();
+    await audioContext.resume();
+
+    while (pcmQueueRef.current.length > 0) {
+      const packet = pcmQueueRef.current.shift();
+      if (!packet) {
+        continue;
+      }
+
+      try {
+        const samples = base64PcmToFloatSamples(packet.data);
+        const audioBuffer = audioContext.createBuffer(1, samples.length, packet.sampleRate);
+        audioBuffer.copyToChannel(samples, 0);
+
+        const source = audioContext.createBufferSource();
+        const gain = audioContext.createGain();
+        gain.gain.value = 20;
+        source.buffer = audioBuffer;
+        source.connect(gain).connect(audioContext.destination);
+
+        const startAt = Math.max(audioContext.currentTime + 0.03, pcmNextStartTimeRef.current);
+        source.start(startAt);
+        pcmNextStartTimeRef.current = startAt + audioBuffer.duration;
+        setRelayPlaybackReady(true);
+      } catch (error) {
+        console.error('Failed to play PCM audio packet:', error);
+      }
+    }
+
+    pcmPlayingRef.current = false;
+  }, [ensureRelayAudioContext]);
+
+  const enqueuePcmPackets = useCallback((packets: PeerPcmPacket[] = []) => {
+    for (const packet of packets) {
+      if (playedPcmPacketIdsRef.current.has(packet.id)) {
+        continue;
+      }
+      playedPcmPacketIdsRef.current.add(packet.id);
+      pcmQueueRef.current.push(packet);
+    }
+
+    void playPcmQueue();
+  }, [playPcmQueue]);
 
   const playRelayQueue = useCallback(async () => {
     if (relayPlayingRef.current) {
@@ -128,7 +230,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
         const source = audioContext.createBufferSource();
         const gain = audioContext.createGain();
-    gain.gain.value = 20;
+        gain.gain.value = 20;
         source.buffer = audioBuffer;
         source.connect(gain).connect(audioContext.destination);
 
@@ -166,38 +268,121 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       : MediaRecorder.isTypeSupported('audio/webm')
         ? 'audio/webm'
         : '';
-    const recorder = mimeType
-      ? new MediaRecorder(stream, { mimeType })
-      : new MediaRecorder(stream);
-    audioRelayRecorderRef.current = recorder;
+    audioRelayRunningRef.current = true;
 
-    recorder.ondataavailable = async (event) => {
-      if (!event.data.size) {
+    const recordClip = () => {
+      if (!audioRelayRunningRef.current) {
         return;
       }
 
-      try {
-        const data = await blobToDataUrl(event.data);
-        await patchSession({
-          audioChunk: {
-            id: `${effectiveRole}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            data,
-            mimeType: event.data.type || 'audio/webm',
-          },
-        });
-      } catch (error) {
-        console.error('Failed to send audio relay chunk:', error);
-      }
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      audioRelayRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) {
+          chunks.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        if (chunks.length > 0) {
+          try {
+            const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || 'audio/webm' });
+            const data = await blobToDataUrl(blob);
+            await patchSession({
+              audioChunk: {
+                id: `${effectiveRole}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                data,
+                mimeType: blob.type || 'audio/webm',
+              },
+            });
+          } catch (error) {
+            console.error('Failed to send audio relay clip:', error);
+          }
+        }
+
+        if (audioRelayRunningRef.current) {
+          audioRelayTimerRef.current = setTimeout(recordClip, 25);
+        }
+      };
+
+      recorder.start();
+      audioRelayTimerRef.current = setTimeout(() => {
+        if (recorder.state === 'recording') {
+          recorder.stop();
+        }
+      }, 900);
     };
 
-    recorder.start(700);
+    recordClip();
   }, [effectiveRole, patchSession]);
 
   const stopAudioRelay = useCallback(() => {
+    audioRelayRunningRef.current = false;
+    if (audioRelayTimerRef.current) {
+      clearTimeout(audioRelayTimerRef.current);
+      audioRelayTimerRef.current = null;
+    }
     if (audioRelayRecorderRef.current?.state === 'recording') {
       audioRelayRecorderRef.current.stop();
     }
     audioRelayRecorderRef.current = null;
+  }, []);
+
+  const startPcmRelay = useCallback((stream: MediaStream) => {
+    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+    const audioContext = new AudioContextCtor();
+    const source = audioContext.createMediaStreamSource(stream);
+    const processor = audioContext.createScriptProcessor(4096, 1, 1);
+    const silentGain = audioContext.createGain();
+    silentGain.gain.value = 0;
+
+    source.connect(processor);
+    processor.connect(silentGain).connect(audioContext.destination);
+
+    pcmRelayContextRef.current = audioContext;
+    pcmRelaySourceRef.current = source;
+    pcmRelayProcessorRef.current = processor;
+    pcmRelaySilentGainRef.current = silentGain;
+
+    void audioContext.resume();
+
+    processor.onaudioprocess = (event) => {
+      const now = Date.now();
+      if (pcmPacketSendingRef.current || now - lastPcmPacketAtRef.current < 220) {
+        return;
+      }
+
+      const input = event.inputBuffer.getChannelData(0);
+      const packetData = floatSamplesToBase64Pcm(input);
+      lastPcmPacketAtRef.current = now;
+      pcmPacketSendingRef.current = true;
+
+      void patchSession({
+        pcmPacket: {
+          id: `${effectiveRole}-pcm-${now}-${Math.random().toString(36).slice(2)}`,
+          data: packetData,
+          sampleRate: audioContext.sampleRate,
+        },
+      }).finally(() => {
+        pcmPacketSendingRef.current = false;
+      });
+    };
+  }, [effectiveRole, patchSession]);
+
+  const stopPcmRelay = useCallback(() => {
+    pcmRelayProcessorRef.current?.disconnect();
+    pcmRelaySourceRef.current?.disconnect();
+    pcmRelaySilentGainRef.current?.disconnect();
+    void pcmRelayContextRef.current?.close();
+    pcmRelayProcessorRef.current = null;
+    pcmRelaySourceRef.current = null;
+    pcmRelaySilentGainRef.current = null;
+    pcmRelayContextRef.current = null;
+    pcmPacketSendingRef.current = false;
   }, []);
 
   const calculateLevel = (analyser: AnalyserNode, data: Uint8Array<ArrayBuffer>) => {
@@ -259,13 +444,10 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     remotePlaybackSourceRef.current?.disconnect();
     remoteGainRef.current?.disconnect();
     void remotePlaybackContextRef.current?.close();
-    void relayAudioContextRef.current?.close();
     remotePlaybackSourceRef.current = null;
     remoteGainRef.current = null;
     remotePlaybackContextRef.current = null;
-    relayAudioContextRef.current = null;
     setRemotePlaybackReady(false);
-    setRelayPlaybackReady(false);
   }, []);
 
   const startRemotePlayback = useCallback((stream: MediaStream) => {
@@ -383,6 +565,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       addLocalTracks(stream);
       startLocalMeter(stream);
       ensureRelayAudioContext();
+      startPcmRelay(stream);
       startAudioRelay(stream);
       setMicActive(true);
       await patchSession({ micActive: true });
@@ -396,11 +579,12 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       console.error('Microphone failed:', error);
       setMicError('Microphone permission failed. Check browser permissions and try again.');
     }
-  }, [addLocalTracks, answerOffer, createOffer, effectiveRole, ensureRelayAudioContext, patchSession, session.rtcOffer, startAudioRelay]);
+  }, [addLocalTracks, answerOffer, createOffer, effectiveRole, ensureRelayAudioContext, patchSession, session.rtcOffer, startAudioRelay, startPcmRelay]);
 
   const stopMic = useCallback(async () => {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     stopAudioRelay();
+    stopPcmRelay();
     stopLocalMeter();
     stopRemoteMeter();
     stopRemotePlayback();
@@ -415,7 +599,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     hasSetRemoteAnswerRef.current = false;
     setMicActive(false);
     await patchSession({ micActive: false, micLevel: 0 });
-  }, [patchSession, stopAudioRelay, stopLocalMeter, stopRemoteMeter, stopRemotePlayback]);
+  }, [patchSession, stopAudioRelay, stopLocalMeter, stopPcmRelay, stopRemoteMeter, stopRemotePlayback]);
 
   useEffect(() => {
     const fetchState = async () => {
@@ -433,9 +617,11 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       if ((res.data.peerRole || effectiveRole) === 'interviewer') {
         setAnswer(nextSession.currentAnswer || '');
         setCodeText(nextSession.codeText || '');
+        enqueuePcmPackets(nextSession.candidatePcmPackets || []);
         enqueueRelayChunks(nextSession.candidateAudioChunks || []);
       } else {
         setQuestion(nextSession.currentQuestion || '');
+        enqueuePcmPackets(nextSession.interviewerPcmPackets || []);
         enqueueRelayChunks(nextSession.interviewerAudioChunks || []);
       }
     };
@@ -443,7 +629,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     void fetchState();
     const interval = setInterval(fetchState, 750);
     return () => clearInterval(interval);
-  }, [effectiveRole, enqueueRelayChunks, onFinish, sessionId]);
+  }, [effectiveRole, enqueuePcmPackets, enqueueRelayChunks, onFinish, sessionId]);
 
   useEffect(() => {
     if (!micActive) {
@@ -487,12 +673,15 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     return () => {
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
       stopAudioRelay();
+      stopPcmRelay();
       peerConnectionRef.current?.close();
       stopLocalMeter();
       stopRemoteMeter();
       stopRemotePlayback();
+      void relayAudioContextRef.current?.close();
+      relayAudioContextRef.current = null;
     };
-  }, [stopAudioRelay, stopLocalMeter, stopRemoteMeter, stopRemotePlayback]);
+  }, [stopAudioRelay, stopLocalMeter, stopPcmRelay, stopRemoteMeter, stopRemotePlayback]);
 
   const saveQuestion = async () => {
     setSaving(true);
@@ -525,6 +714,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     void remoteAudioRef.current?.play().catch(() => {
       setMicError('Remote audio could not start. Check browser autoplay settings and output device.');
     });
+    void playPcmQueue();
     void playRelayQueue();
   };
 

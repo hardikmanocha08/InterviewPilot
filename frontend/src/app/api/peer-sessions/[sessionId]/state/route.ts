@@ -180,8 +180,38 @@ export async function PATCH(
       });
     }
 
-    if (chunks.length > 40) {
-      chunks.splice(0, chunks.length - 40);
+    if (chunks.length > 12) {
+      chunks.splice(0, chunks.length - 12);
+    }
+  }
+  if (
+    body.pcmPacket
+    && typeof body.pcmPacket.id === 'string'
+    && typeof body.pcmPacket.data === 'string'
+    && typeof body.pcmPacket.sampleRate === 'number'
+  ) {
+    if (!session.candidatePcmPackets) {
+      session.candidatePcmPackets = [];
+    }
+    if (!session.interviewerPcmPackets) {
+      session.interviewerPcmPackets = [];
+    }
+
+    const packets = peerRole === 'interviewee'
+      ? session.candidatePcmPackets
+      : session.interviewerPcmPackets;
+
+    if (!packets.some((packet: any) => packet.id === body.pcmPacket.id)) {
+      packets.push({
+        id: body.pcmPacket.id,
+        data: body.pcmPacket.data,
+        sampleRate: Math.max(8000, Math.min(96000, Math.round(body.pcmPacket.sampleRate))),
+        createdAt: new Date(),
+      });
+    }
+
+    if (packets.length > 30) {
+      packets.splice(0, packets.length - 30);
     }
   }
 
