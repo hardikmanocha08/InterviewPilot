@@ -154,6 +154,36 @@ export async function PATCH(
       candidates.push(body.iceCandidate);
     }
   }
+  if (
+    body.audioChunk
+    && typeof body.audioChunk.id === 'string'
+    && typeof body.audioChunk.data === 'string'
+    && typeof body.audioChunk.mimeType === 'string'
+  ) {
+    if (!session.candidateAudioChunks) {
+      session.candidateAudioChunks = [];
+    }
+    if (!session.interviewerAudioChunks) {
+      session.interviewerAudioChunks = [];
+    }
+
+    const chunks = peerRole === 'interviewee'
+      ? session.candidateAudioChunks
+      : session.interviewerAudioChunks;
+
+    if (!chunks.some((chunk: any) => chunk.id === body.audioChunk.id)) {
+      chunks.push({
+        id: body.audioChunk.id,
+        data: body.audioChunk.data,
+        mimeType: body.audioChunk.mimeType,
+        createdAt: new Date(),
+      });
+    }
+
+    if (chunks.length > 40) {
+      chunks.splice(0, chunks.length - 40);
+    }
+  }
 
   await session.save();
   await syncPeerQuestionToInterviews(session);

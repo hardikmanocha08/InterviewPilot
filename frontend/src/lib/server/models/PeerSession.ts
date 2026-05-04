@@ -22,6 +22,18 @@ export interface IPeerSession extends Document {
   rtcAnswer?: string;
   candidateIceCandidates?: string[];
   interviewerIceCandidates?: string[];
+  candidateAudioChunks?: {
+    id: string;
+    data: string;
+    mimeType: string;
+    createdAt: Date;
+  }[];
+  interviewerAudioChunks?: {
+    id: string;
+    data: string;
+    mimeType: string;
+    createdAt: Date;
+  }[];
   interviewerFeedback?: {
     overallScore: number;
     communication: string;
@@ -116,6 +128,28 @@ const peerSessionSchema = new mongoose.Schema<IPeerSession>(
     },
     interviewerIceCandidates: {
       type: [String],
+      default: [],
+    },
+    candidateAudioChunks: {
+      type: [
+        {
+          id: String,
+          data: String,
+          mimeType: String,
+          createdAt: Date,
+        },
+      ],
+      default: [],
+    },
+    interviewerAudioChunks: {
+      type: [
+        {
+          id: String,
+          data: String,
+          mimeType: String,
+          createdAt: Date,
+        },
+      ],
       default: [],
     },
     interviewerFeedback: {

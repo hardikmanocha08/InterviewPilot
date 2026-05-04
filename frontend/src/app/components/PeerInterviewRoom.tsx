@@ -23,6 +23,15 @@ interface PeerSessionState {
   rtcAnswer?: string;
   candidateIceCandidates?: string[];
   interviewerIceCandidates?: string[];
+  candidateAudioChunks?: PeerAudioChunk[];
+  interviewerAudioChunks?: PeerAudioChunk[];
+}
+
+interface PeerAudioChunk {
+  id: string;
+  data: string;
+  mimeType: string;
+  createdAt?: string;
 }
 
 const rtcConfig: RTCConfiguration = {
@@ -41,6 +50,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const [localMicLevel, setLocalMicLevel] = useState(0);
   const [remoteMicLevel, setRemoteMicLevel] = useState(0);
   const [remotePlaybackReady, setRemotePlaybackReady] = useState(false);
+  const [relayPlaybackReady, setRelayPlaybackReady] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -58,12 +68,108 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const localMeterFrameRef = useRef<number | null>(null);
   const remoteMeterFrameRef = useRef<number | null>(null);
   const lastMicLevelPatchRef = useRef(0);
+  const audioRelayRecorderRef = useRef<MediaRecorder | null>(null);
+  const playedRelayChunkIdsRef = useRef(new Set<string>());
+  const relayQueueRef = useRef<PeerAudioChunk[]>([]);
+  const relayPlayingRef = useRef(false);
 
   const patchSession = useCallback(async (payload: Record<string, unknown>) => {
     const res = await api.patch(`/peer-sessions/${sessionId}/state`, payload);
     setSession(res.data.session || {});
     return res.data.session as PeerSessionState;
   }, [sessionId]);
+
+  const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+
+  const playRelayQueue = useCallback(async () => {
+    if (relayPlayingRef.current) {
+      return;
+    }
+
+    relayPlayingRef.current = true;
+    setRelayPlaybackReady(true);
+
+    while (relayQueueRef.current.length > 0) {
+      const chunk = relayQueueRef.current.shift();
+      if (!chunk) {
+        continue;
+      }
+
+      await new Promise<void>((resolve) => {
+        const audio = new Audio(chunk.data);
+        audio.volume = 1;
+        audio.onended = () => resolve();
+        audio.onerror = () => resolve();
+        audio.play().catch(() => {
+          setRelayPlaybackReady(false);
+          resolve();
+        });
+      });
+    }
+
+    relayPlayingRef.current = false;
+  }, []);
+
+  const enqueueRelayChunks = useCallback((chunks: PeerAudioChunk[] = []) => {
+    for (const chunk of chunks) {
+      if (playedRelayChunkIdsRef.current.has(chunk.id)) {
+        continue;
+      }
+      playedRelayChunkIdsRef.current.add(chunk.id);
+      relayQueueRef.current.push(chunk);
+    }
+
+    void playRelayQueue();
+  }, [playRelayQueue]);
+
+  const startAudioRelay = useCallback((stream: MediaStream) => {
+    if (!window.MediaRecorder) {
+      return;
+    }
+
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : '';
+    const recorder = mimeType
+      ? new MediaRecorder(stream, { mimeType })
+      : new MediaRecorder(stream);
+    audioRelayRecorderRef.current = recorder;
+
+    recorder.ondataavailable = async (event) => {
+      if (!event.data.size) {
+        return;
+      }
+
+      try {
+        const data = await blobToDataUrl(event.data);
+        await patchSession({
+          audioChunk: {
+            id: `${effectiveRole}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            data,
+            mimeType: event.data.type || 'audio/webm',
+          },
+        });
+      } catch (error) {
+        console.error('Failed to send audio relay chunk:', error);
+      }
+    };
+
+    recorder.start(700);
+  }, [effectiveRole, patchSession]);
+
+  const stopAudioRelay = useCallback(() => {
+    if (audioRelayRecorderRef.current?.state === 'recording') {
+      audioRelayRecorderRef.current.stop();
+    }
+    audioRelayRecorderRef.current = null;
+  }, []);
 
   const calculateLevel = (analyser: AnalyserNode, data: Uint8Array<ArrayBuffer>) => {
     analyser.getByteTimeDomainData(data);
@@ -244,6 +350,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       localStreamRef.current = stream;
       addLocalTracks(stream);
       startLocalMeter(stream);
+      startAudioRelay(stream);
       setMicActive(true);
       await patchSession({ micActive: true });
 
@@ -256,10 +363,11 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       console.error('Microphone failed:', error);
       setMicError('Microphone permission failed. Check browser permissions and try again.');
     }
-  }, [addLocalTracks, answerOffer, createOffer, effectiveRole, patchSession, session.rtcOffer]);
+  }, [addLocalTracks, answerOffer, createOffer, effectiveRole, patchSession, session.rtcOffer, startAudioRelay]);
 
   const stopMic = useCallback(async () => {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    stopAudioRelay();
     stopLocalMeter();
     stopRemoteMeter();
     stopRemotePlayback();
@@ -274,7 +382,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     hasSetRemoteAnswerRef.current = false;
     setMicActive(false);
     await patchSession({ micActive: false, micLevel: 0 });
-  }, [patchSession, stopLocalMeter, stopRemoteMeter, stopRemotePlayback]);
+  }, [patchSession, stopAudioRelay, stopLocalMeter, stopRemoteMeter, stopRemotePlayback]);
 
   useEffect(() => {
     const fetchState = async () => {
@@ -292,15 +400,17 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       if ((res.data.peerRole || effectiveRole) === 'interviewer') {
         setAnswer(nextSession.currentAnswer || '');
         setCodeText(nextSession.codeText || '');
+        enqueueRelayChunks(nextSession.candidateAudioChunks || []);
       } else {
         setQuestion(nextSession.currentQuestion || '');
+        enqueueRelayChunks(nextSession.interviewerAudioChunks || []);
       }
     };
 
     void fetchState();
     const interval = setInterval(fetchState, 750);
     return () => clearInterval(interval);
-  }, [effectiveRole, onFinish, sessionId]);
+  }, [effectiveRole, enqueueRelayChunks, onFinish, sessionId]);
 
   useEffect(() => {
     if (!micActive) {
@@ -343,12 +453,13 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   useEffect(() => {
     return () => {
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
+      stopAudioRelay();
       peerConnectionRef.current?.close();
       stopLocalMeter();
       stopRemoteMeter();
       stopRemotePlayback();
     };
-  }, [stopLocalMeter, stopRemoteMeter, stopRemotePlayback]);
+  }, [stopAudioRelay, stopLocalMeter, stopRemoteMeter, stopRemotePlayback]);
 
   const saveQuestion = async () => {
     setSaving(true);
@@ -378,6 +489,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     void remoteAudioRef.current?.play().catch(() => {
       setMicError('Remote audio could not start. Check browser autoplay settings and output device.');
     });
+    void playRelayQueue();
   };
 
   const interviewerMicActive = Boolean(session.interviewerMicActive);
@@ -429,6 +541,9 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
           >
             {remotePlaybackReady ? 'Audio enabled' : 'Enable audio'}
           </button>
+          <span className={`hidden sm:inline text-xs px-2 py-1 rounded border ${relayPlaybackReady ? 'border-green-500/30 text-green-300 bg-green-500/10' : 'border-border text-text-muted'}`}>
+            Relay {relayPlaybackReady ? 'on' : 'ready'}
+          </span>
           <div className="hidden md:flex items-center gap-3">
             <MicLevel label="Interviewer" level={interviewerLevel} active={interviewerMicActive} />
             <MicLevel label="Interviewee" level={intervieweeLevel} active={intervieweeMicActive} />
