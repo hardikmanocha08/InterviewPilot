@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/server/auth';
 import connectDB from '@/lib/server/db';
 import Interview from '@/lib/server/models/Interview';
+import PeerSession from '@/lib/server/models/PeerSession';
 import { evaluateAnswer } from '@/lib/server/utils/ai';
 import { sendEmail } from '@/lib/server/utils/email';
 
@@ -54,8 +55,8 @@ export async function POST(
     }
   }
 
-  // For timed interviews, run all question analysis only at the end.
-  if (interview.interviewMode === 'timed') {
+  // Timed and peer interviews run AI analysis only at completion.
+  if (interview.interviewMode === 'timed' || interview.interviewMode === 'peer') {
     for (const question of interview.questions) {
       if (!question.userAnswer?.trim()) {
         continue;
@@ -117,6 +118,12 @@ export async function POST(
   user.badges = Array.from(badgeSet);
 
   await interview.save();
+  if (interview.peerSessionId) {
+    await PeerSession.findByIdAndUpdate(interview.peerSessionId, {
+      status: 'completed',
+      completedAt: now,
+    });
+  }
   await user.save();
 
   const emailTo = user.settings?.notificationEmail || user.email;

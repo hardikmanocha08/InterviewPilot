@@ -11,6 +11,15 @@ export interface IPeerSession extends Document {
   startedAt?: Date;
   completedAt?: Date;
   duration?: number; // in seconds
+  currentQuestion?: string;
+  currentAnswer?: string;
+  codeText?: string;
+  candidateMicActive?: boolean;
+  interviewerMicActive?: boolean;
+  rtcOffer?: string;
+  rtcAnswer?: string;
+  candidateIceCandidates?: string[];
+  interviewerIceCandidates?: string[];
   interviewerFeedback?: {
     overallScore: number;
     communication: string;
@@ -62,6 +71,42 @@ const peerSessionSchema = new mongoose.Schema<IPeerSession>(
     },
     duration: {
       type: Number,
+    },
+    currentQuestion: {
+      type: String,
+      default: '',
+    },
+    currentAnswer: {
+      type: String,
+      default: '',
+    },
+    codeText: {
+      type: String,
+      default: '',
+    },
+    candidateMicActive: {
+      type: Boolean,
+      default: false,
+    },
+    interviewerMicActive: {
+      type: Boolean,
+      default: false,
+    },
+    rtcOffer: {
+      type: String,
+      default: '',
+    },
+    rtcAnswer: {
+      type: String,
+      default: '',
+    },
+    candidateIceCandidates: {
+      type: [String],
+      default: [],
+    },
+    interviewerIceCandidates: {
+      type: [String],
+      default: [],
     },
     interviewerFeedback: {
       overallScore: Number,

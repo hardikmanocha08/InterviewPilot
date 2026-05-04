@@ -15,6 +15,7 @@ interface BehavioralAnalysisProps {
   isEnabled: boolean;
   onMetricsUpdate: (metrics: BehavioralMetric[]) => void;
   isRecording: boolean;
+  onViolation?: (reason: string) => void;
 }
 
 interface CurrentBehavioralState {
@@ -28,6 +29,7 @@ export default function BehavioralAnalysisOverlay({
   isEnabled,
   onMetricsUpdate,
   isRecording,
+  onViolation,
 }: BehavioralAnalysisProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -44,6 +46,7 @@ export default function BehavioralAnalysisOverlay({
     lastVolume: number;
     silenceDuration: number;
   }>({ lastVolume: 0, silenceDuration: 0 });
+  const violationReportedRef = useRef(false);
 
   useEffect(() => {
     if (!isEnabled) return;
@@ -77,7 +80,58 @@ export default function BehavioralAnalysisOverlay({
     if (!isRecording || !hasPermission) return;
 
     // Simulated behavioral analysis (in production, use ML model like TensorFlow.js)
-    analysisIntervalRef.current = setInterval(() => {
+    analysisIntervalRef.current = setInterval(async () => {
+      if (videoRef.current && canvasRef.current && !violationReportedRef.current) {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+
+        if (!video.videoWidth || !video.videoHeight || video.paused || video.ended) {
+          violationReportedRef.current = true;
+          onViolation?.('Camera feed is not active.');
+          return;
+        }
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+
+        if (context) {
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+          const FaceDetectorCtor = (window as any).FaceDetector;
+          if (FaceDetectorCtor) {
+            try {
+              const detector = new FaceDetectorCtor({ fastMode: true, maxDetectedFaces: 1 });
+              const faces = await detector.detect(canvas);
+              if (!faces.length) {
+                violationReportedRef.current = true;
+                onViolation?.('No face detected in camera.');
+                return;
+              }
+            } catch {
+              // Fall back to basic frame checks below when FaceDetector is unavailable or fails.
+            }
+          }
+
+          const frame = context.getImageData(0, 0, canvas.width, canvas.height).data;
+          let brightness = 0;
+          const sampleStep = Math.max(4, Math.floor(frame.length / 12000));
+          let samples = 0;
+
+          for (let i = 0; i < frame.length; i += sampleStep * 4) {
+            brightness += (frame[i] + frame[i + 1] + frame[i + 2]) / 3;
+            samples += 1;
+          }
+
+          const averageBrightness = brightness / Math.max(1, samples);
+          if (averageBrightness < 18 || averageBrightness > 245) {
+            violationReportedRef.current = true;
+            onViolation?.('Camera view appears blocked, blank, or overexposed.');
+            return;
+          }
+        }
+      }
+
       // Simulate metrics - in real implementation, analyze video frames
       const simulatedEyeContact = Math.random() * 100;
       const simulatedConfidence = Math.random() * 100;
@@ -106,14 +160,14 @@ export default function BehavioralAnalysisOverlay({
         emotion,
         pace,
       });
-    }, 3000); // Analyze every 3 seconds
+    }, 1000); // Proctor continuously while recording.
 
     return () => {
       if (analysisIntervalRef.current) {
         clearInterval(analysisIntervalRef.current);
       }
     };
-  }, [isRecording, hasPermission, onMetricsUpdate]);
+  }, [isRecording, hasPermission, onMetricsUpdate, onViolation]);
 
   if (!isEnabled || !hasPermission) {
     return null;
@@ -131,6 +185,7 @@ export default function BehavioralAnalysisOverlay({
           className="w-full h-full object-cover mirror"
           style={{ transform: 'scaleX(-1)' }}
         />
+        <canvas ref={canvasRef} className="hidden" />
 
         {/* Metrics Overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex flex-col justify-end p-3">

@@ -22,9 +22,10 @@ interface PeerLobbyProps {
   interviewId: string;
   role: string;
   experienceLevel: string;
+  peerRole: 'interviewer' | 'interviewee';
 }
 
-export default function PeerLobby({ onJoinSession, interviewId, role, experienceLevel }: PeerLobbyProps) {
+export default function PeerLobby({ onJoinSession, interviewId, role, experienceLevel, peerRole }: PeerLobbyProps) {
   const [sessions, setSessions] = useState<PeerSession[]>([]);
   const [ownSession, setOwnSession] = useState<PeerSession | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,7 +43,7 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
       setOwnSession(currentOwnSession);
       setError(null);
 
-      if (currentOwnSession?.status === 'active') {
+      if (peerRole === 'interviewee' && currentOwnSession?.status === 'active') {
         onJoinSession(currentOwnSession._id);
       }
     } catch (err) {
@@ -58,7 +59,7 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
     fetchPeerSessions();
     const interval = setInterval(fetchPeerSessions, 10000); // Refresh every 10 seconds
     return () => clearInterval(interval);
-  }, [onJoinSession]);
+  }, [onJoinSession, peerRole]);
 
   const handleCreateSession = async () => {
     try {
@@ -100,7 +101,11 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
           <FiUsers className="w-6 h-6 text-primary" />
           <h2 className="text-2xl font-bold text-white">Find a Peer Interviewer</h2>
         </div>
-        <p className="text-text-muted">Practice interviewing with other candidates in real-time</p>
+        <p className="text-text-muted">
+          {peerRole === 'interviewee'
+            ? 'Create a room and wait for a human interviewer.'
+            : 'Join a waiting candidate as their human interviewer.'}
+        </p>
       </div>
 
       {error && (
@@ -114,7 +119,7 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
         </motion.div>
       )}
 
-      {ownSession?.status === 'waiting' && (
+      {peerRole === 'interviewee' && ownSession?.status === 'waiting' && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -124,11 +129,32 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
         </motion.div>
       )}
 
+      {peerRole === 'interviewee' && !ownSession && !loading && (
+        <button
+          onClick={handleCreateSession}
+          disabled={refreshing}
+          className="w-full mb-4 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
+        >
+          <FiPlus className="w-4 h-4" />
+          <span>{refreshing ? 'Creating room...' : 'Create interviewee room'}</span>
+        </button>
+      )}
+
       {loading ? (
         <div className="flex flex-col items-center justify-center py-12">
           <FiLoader className="w-8 h-8 text-primary animate-spin mb-4" />
           <p className="text-text-muted">Loading available peers...</p>
         </div>
+      ) : peerRole === 'interviewee' ? (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="py-12 text-center border border-dashed border-border rounded-lg"
+        >
+          <FiUsers className="w-12 h-12 text-text-muted mx-auto mb-4 opacity-50" />
+          <p className="text-text-muted mb-2">Waiting for an interviewer</p>
+          <p className="text-sm text-text-muted">Keep this page open. You will enter the room automatically when someone joins.</p>
+        </motion.div>
       ) : sessions.length === 0 ? (
         <motion.div
           initial={{ opacity: 0 }}
@@ -137,14 +163,7 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
         >
           <FiUsers className="w-12 h-12 text-text-muted mx-auto mb-4 opacity-50" />
           <p className="text-text-muted mb-4">No peers currently waiting for interviews</p>
-          <button
-            onClick={handleCreateSession}
-            disabled={refreshing || Boolean(ownSession)}
-            className="mx-auto bg-primary hover:bg-primary-hover disabled:opacity-50 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2"
-          >
-            <FiPlus className="w-4 h-4" />
-            <span>{ownSession ? 'Waiting for peer' : 'Create session'}</span>
-          </button>
+          <p className="text-sm text-text-muted">Refresh in a moment or ask the interviewee to create a room.</p>
         </motion.div>
       ) : (
         <motion.div className="space-y-3">

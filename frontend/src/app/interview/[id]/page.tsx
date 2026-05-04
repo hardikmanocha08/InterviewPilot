@@ -5,8 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
 import BehavioralAnalysisOverlay from '@/app/components/BehavioralAnalysisOverlay';
+import PeerInterviewRoom from '@/app/components/PeerInterviewRoom';
 import PeerLobby from '@/app/components/PeerLobby';
-import { FiSend, FiCheckCircle, FiChevronRight, FiAlertCircle, FiBarChart2, FiThumbsUp, FiTrendingDown, FiXCircle } from 'react-icons/fi';
+import { FiSend, FiCheckCircle, FiChevronRight, FiAlertCircle, FiBarChart2, FiThumbsUp, FiTrendingDown, FiXCircle, FiMic, FiMicOff } from 'react-icons/fi';
 
 type EndReason = 'manual' | 'timeout' | 'abandoned';
 
@@ -29,12 +30,17 @@ export default function InterviewRoom() {
     const [evaluating, setEvaluating] = useState(false);
     const [finishing, setFinishing] = useState(false);
     const [timeLeftSeconds, setTimeLeftSeconds] = useState<number | null>(null);
+    const [peerRole, setPeerRole] = useState<'interviewer' | 'interviewee' | null>(null);
+    const [recordingAnswer, setRecordingAnswer] = useState(false);
+    const [transcribingAnswer, setTranscribingAnswer] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const hasFinalizedRef = useRef(false);
     const timerExpiredRef = useRef(false);
     const canAbandonOnUnmountRef = useRef(false);
     const submittedBehavioralMetricsRef = useRef(0);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const answerAudioChunksRef = useRef<Blob[]>([]);
 
     useEffect(() => {
         const fetchSessionData = async () => {
@@ -292,6 +298,73 @@ export default function InterviewRoom() {
         setInterview((current: any) => current ? { ...current, peerSessionId: sessionId } : current);
     }, []);
 
+    const handleBehavioralViolation = useCallback((reason: string) => {
+        alert(`Interview stopped: ${reason}`);
+        void handleFinishInterview('abandoned');
+    }, [handleFinishInterview]);
+
+    const handlePeerFinish = useCallback(() => {
+        void handleFinishInterview('manual');
+    }, [handleFinishInterview]);
+
+    const startAnswerRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                },
+            });
+            const recorder = new MediaRecorder(stream);
+            answerAudioChunksRef.current = [];
+            mediaRecorderRef.current = recorder;
+
+            recorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    answerAudioChunksRef.current.push(event.data);
+                }
+            };
+
+            recorder.onstop = async () => {
+                stream.getTracks().forEach((track) => track.stop());
+                const audioBlob = new Blob(answerAudioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+                if (!audioBlob.size || !id) {
+                    return;
+                }
+
+                setTranscribingAnswer(true);
+                try {
+                    const formData = new FormData();
+                    formData.append('audio', audioBlob, 'answer.webm');
+                    const res = await api.post(`/interviews/${id}/speech-to-text`, formData);
+                    const text = res.data?.text?.trim();
+                    if (text) {
+                        setAnswerInput((current) => current ? `${current.trim()}\n\n${text}` : text);
+                    }
+                } catch (error) {
+                    console.error('Failed to transcribe answer:', error);
+                    alert('Microphone recording worked, but transcription failed. Check your STT provider settings.');
+                } finally {
+                    setTranscribingAnswer(false);
+                }
+            };
+
+            recorder.start();
+            setRecordingAnswer(true);
+        } catch (error) {
+            console.error('Microphone permission failed:', error);
+            alert('Microphone permission failed. Check browser permissions and try again.');
+        }
+    };
+
+    const stopAnswerRecording = () => {
+        if (mediaRecorderRef.current?.state === 'recording') {
+            mediaRecorderRef.current.stop();
+        }
+        setRecordingAnswer(false);
+    };
+
     if (loading) return <div className="min-h-screen bg-background flex items-center justify-center text-white">Loading Interview Environment...</div>;
 
     if (!interview) {
@@ -305,14 +378,43 @@ export default function InterviewRoom() {
         )
     }
 
-    const currentQ = interview.questions[currentQuestionIndex];
-    const isAnswered = !!currentQ.userAnswer;
-    const minutes = timeLeftSeconds !== null ? Math.floor(timeLeftSeconds / 60) : 0;
-    const seconds = timeLeftSeconds !== null ? timeLeftSeconds % 60 : 0;
-    const formattedTime = `${minutes}:${String(seconds).padStart(2, '0')}`;
-    const timerPercent = interview.interviewMode === 'timed' && interview.perQuestionTimeSeconds
-        ? Math.max(0, Math.min(100, Math.round(((timeLeftSeconds || 0) / interview.perQuestionTimeSeconds) * 100)))
-        : 0;
+    if (interview.interviewMode === 'peer' && !peerRole) {
+        return (
+            <div className="min-h-screen bg-background flex items-center justify-center p-4">
+                <div className="w-full max-w-2xl bg-surface border border-border rounded-xl p-6 shadow-xl">
+                    <p className="text-xs uppercase text-primary font-semibold mb-2">Peer Mode</p>
+                    <h1 className="text-2xl font-bold text-white mb-2">How do you want to join?</h1>
+                    <p className="text-text-muted mb-6">AI will not generate questions in this mode. The human interviewer writes the question, and the interviewee responds and codes.</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <button
+                            onClick={() => setPeerRole('interviewee')}
+                            className="border border-border hover:border-primary bg-background rounded-lg p-5 text-left transition-colors"
+                        >
+                            <span className="block text-lg font-bold text-white mb-2">Join as Interviewee</span>
+                            <span className="text-sm text-text-muted">Create a waiting room, answer questions, and use the coding space.</span>
+                        </button>
+                        <button
+                            onClick={() => setPeerRole('interviewer')}
+                            className="border border-border hover:border-primary bg-background rounded-lg p-5 text-left transition-colors"
+                        >
+                            <span className="block text-lg font-bold text-white mb-2">Join as Interviewer</span>
+                            <span className="text-sm text-text-muted">Pick a waiting candidate, type questions, and listen live.</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (interview.interviewMode === 'peer' && interview.peerSessionId) {
+        return (
+            <PeerInterviewRoom
+                sessionId={String(interview.peerSessionId)}
+                peerRole={peerRole || 'interviewee'}
+                onFinish={handlePeerFinish}
+            />
+        );
+    }
 
     if (interview.interviewMode === 'peer' && !interview.peerSessionId) {
         return (
@@ -326,11 +428,21 @@ export default function InterviewRoom() {
                     interviewId={String(id)}
                     role={interview.role}
                     experienceLevel={interview.experienceLevel}
+                    peerRole={peerRole}
                     onJoinSession={handlePeerSessionReady}
                 />
             </div>
         );
     }
+
+    const currentQ = interview.questions[currentQuestionIndex];
+    const isAnswered = !!currentQ.userAnswer;
+    const minutes = timeLeftSeconds !== null ? Math.floor(timeLeftSeconds / 60) : 0;
+    const seconds = timeLeftSeconds !== null ? timeLeftSeconds % 60 : 0;
+    const formattedTime = `${minutes}:${String(seconds).padStart(2, '0')}`;
+    const timerPercent = interview.interviewMode === 'timed' && interview.perQuestionTimeSeconds
+        ? Math.max(0, Math.min(100, Math.round(((timeLeftSeconds || 0) / interview.perQuestionTimeSeconds) * 100)))
+        : 0;
 
     return (
         <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden relative">
@@ -338,6 +450,7 @@ export default function InterviewRoom() {
                 isEnabled={Boolean(interview.behavioralAnalysis?.isEnabled)}
                 isRecording={!finishing && interview.status !== 'completed'}
                 onMetricsUpdate={handleBehavioralMetricsUpdate}
+                onViolation={handleBehavioralViolation}
             />
             {/* Left panel: Info  & Progress */}
             <div className="w-full md:w-1/3 bg-surface border-b md:border-b-0 md:border-r border-border p-3 sm:p-4 md:p-6 flex flex-col h-auto md:h-full overflow-hidden">
@@ -523,6 +636,14 @@ export default function InterviewRoom() {
                             />
 
                             <div className="absolute bottom-4 right-4 flex space-x-2">
+                                <button
+                                    onClick={recordingAnswer ? stopAnswerRecording : startAnswerRecording}
+                                    disabled={evaluating || finishing || transcribingAnswer}
+                                    className={`p-3 disabled:bg-border disabled:text-text-muted text-white rounded-lg transition-colors ${recordingAnswer ? 'bg-red-500 hover:bg-red-600' : 'bg-surface border border-border hover:border-primary'}`}
+                                    title={recordingAnswer ? 'Stop recording' : 'Record answer'}
+                                >
+                                    {recordingAnswer ? <FiMicOff className="w-5 h-5" /> : <FiMic className="w-5 h-5" />}
+                                </button>
                                 <button
                                     onClick={handleAnswerSubmit}
                                     disabled={evaluating || finishing || !answerInput.trim()}

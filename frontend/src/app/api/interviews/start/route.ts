@@ -47,13 +47,15 @@ export async function POST(req: NextRequest) {
     const perQuestionTimeSeconds = selectedMode === 'timed'
       ? Math.max(120, Math.min(420, experienceBase + questionLoadAdjustment))
       : 0;
-    const aiQuestions = await generateInterviewQuestions(
-      `${role} (${selectedIndustry})`,
-      experienceLevel,
-      totalQuestions
-    );
+    const aiQuestions = selectedMode === 'peer'
+      ? []
+      : await generateInterviewQuestions(
+        `${role} (${selectedIndustry})`,
+        experienceLevel,
+        totalQuestions
+      );
 
-    const questions = aiQuestions.map((q: { questionText: string }) => ({
+    const questions = selectedMode === 'peer' ? [] : aiQuestions.map((q: { questionText: string }) => ({
       questionText: q.questionText,
       userAnswer: '',
       score: 0,
