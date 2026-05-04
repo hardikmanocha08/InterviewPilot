@@ -35,10 +35,12 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const [codeText, setCodeText] = useState('');
   const [micActive, setMicActive] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
+  const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>('new');
   const [saving, setSaving] = useState(false);
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const audioSenderRef = useRef<RTCRtpSender | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const handledRemoteCandidatesRef = useRef(new Set<string>());
   const hasSetRemoteAnswerRef = useRef(false);
@@ -56,6 +58,11 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
 
     const pc = new RTCPeerConnection(rtcConfig);
     peerConnectionRef.current = pc;
+    audioSenderRef.current = pc.addTransceiver('audio', { direction: 'sendrecv' }).sender;
+
+    pc.onconnectionstatechange = () => {
+      setConnectionState(pc.connectionState);
+    };
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -66,6 +73,10 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     pc.ontrack = (event) => {
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = event.streams[0];
+        remoteAudioRef.current.volume = 1;
+        void remoteAudioRef.current.play().catch(() => {
+          setMicError('Remote audio is connected, but the browser blocked autoplay. Click the mic button once on this page.');
+        });
       }
     };
 
@@ -73,13 +84,11 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   }, [patchSession]);
 
   const addLocalTracks = useCallback((stream: MediaStream) => {
-    const pc = ensurePeerConnection();
-    const existingTrackIds = new Set(pc.getSenders().map((sender) => sender.track?.id).filter(Boolean));
-    stream.getTracks().forEach((track) => {
-      if (!existingTrackIds.has(track.id)) {
-        pc.addTrack(track, stream);
-      }
-    });
+    ensurePeerConnection();
+    const audioTrack = stream.getAudioTracks()[0];
+    if (audioTrack && audioSenderRef.current) {
+      void audioSenderRef.current.replaceTrack(audioTrack);
+    }
   }, [ensurePeerConnection]);
 
   const createOffer = useCallback(async () => {
@@ -129,9 +138,13 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
 
   const stopMic = useCallback(async () => {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    if (audioSenderRef.current) {
+      await audioSenderRef.current.replaceTrack(null);
+    }
     localStreamRef.current = null;
     peerConnectionRef.current?.close();
     peerConnectionRef.current = null;
+    audioSenderRef.current = null;
     handledRemoteCandidatesRef.current.clear();
     hasSetRemoteAnswerRef.current = false;
     setMicActive(false);
@@ -160,7 +173,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     };
 
     void fetchState();
-    const interval = setInterval(fetchState, 2000);
+    const interval = setInterval(fetchState, 750);
     return () => clearInterval(interval);
   }, [effectiveRole, onFinish, sessionId]);
 
@@ -189,8 +202,11 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
         if (handledRemoteCandidatesRef.current.has(candidateText)) {
           continue;
         }
-        handledRemoteCandidatesRef.current.add(candidateText);
+        if (!pc.currentRemoteDescription) {
+          continue;
+        }
         await pc.addIceCandidate(JSON.parse(candidateText) as RTCIceCandidateInit);
+        handledRemoteCandidatesRef.current.add(candidateText);
       }
     };
 
@@ -242,6 +258,9 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
           </span>
           <span className={`text-xs px-2 py-1 rounded border ${intervieweeMicActive ? 'text-green-300 border-green-500/30 bg-green-500/10' : 'text-text-muted border-border'}`}>
             Interviewee mic
+          </span>
+          <span className="hidden sm:inline text-xs px-2 py-1 rounded border border-border text-text-muted">
+            Audio: {connectionState}
           </span>
           <button
             onClick={micActive ? stopMic : startMic}

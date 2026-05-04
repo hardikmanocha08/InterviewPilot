@@ -47,6 +47,11 @@ export default function BehavioralAnalysisOverlay({
     silenceDuration: number;
   }>({ lastVolume: 0, silenceDuration: 0 });
   const violationReportedRef = useRef(false);
+  const onViolationRef = useRef(onViolation);
+
+  useEffect(() => {
+    onViolationRef.current = onViolation;
+  }, [onViolation]);
 
   useEffect(() => {
     if (!isEnabled) return;
@@ -58,11 +63,30 @@ export default function BehavioralAnalysisOverlay({
         });
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          stream.getVideoTracks().forEach((track) => {
+            track.onended = () => {
+              if (!violationReportedRef.current) {
+                violationReportedRef.current = true;
+                onViolationRef.current?.('Camera feed stopped.');
+              }
+            };
+            track.onmute = () => {
+              if (!violationReportedRef.current) {
+                violationReportedRef.current = true;
+                onViolationRef.current?.('Camera feed was muted or blocked.');
+              }
+            };
+          });
+          await videoRef.current.play();
           setHasPermission(true);
         }
       } catch (err) {
         console.error('Camera permission denied:', err);
         setHasPermission(false);
+        if (!violationReportedRef.current) {
+          violationReportedRef.current = true;
+          onViolationRef.current?.('Camera permission failed or camera is unavailable.');
+        }
       }
     };
 
@@ -87,7 +111,7 @@ export default function BehavioralAnalysisOverlay({
 
         if (!video.videoWidth || !video.videoHeight || video.paused || video.ended) {
           violationReportedRef.current = true;
-          onViolation?.('Camera feed is not active.');
+          onViolationRef.current?.('Camera feed is not active.');
           return;
         }
 
@@ -98,6 +122,27 @@ export default function BehavioralAnalysisOverlay({
         if (context) {
           context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+          const frame = context.getImageData(0, 0, canvas.width, canvas.height).data;
+          let brightness = 0;
+          let brightnessSquared = 0;
+          const sampleStep = Math.max(4, Math.floor(frame.length / 12000));
+          let samples = 0;
+
+          for (let i = 0; i < frame.length; i += sampleStep * 4) {
+            const value = (frame[i] + frame[i + 1] + frame[i + 2]) / 3;
+            brightness += value;
+            brightnessSquared += value * value;
+            samples += 1;
+          }
+
+          const averageBrightness = brightness / Math.max(1, samples);
+          const variance = brightnessSquared / Math.max(1, samples) - averageBrightness * averageBrightness;
+          if (averageBrightness < 35 || averageBrightness > 245 || variance < 6) {
+            violationReportedRef.current = true;
+            onViolationRef.current?.('Camera view appears blocked, blank, or overexposed.');
+            return;
+          }
+
           const FaceDetectorCtor = (window as any).FaceDetector;
           if (FaceDetectorCtor) {
             try {
@@ -105,29 +150,12 @@ export default function BehavioralAnalysisOverlay({
               const faces = await detector.detect(canvas);
               if (!faces.length) {
                 violationReportedRef.current = true;
-                onViolation?.('No face detected in camera.');
+                onViolationRef.current?.('No face detected in camera.');
                 return;
               }
             } catch {
-              // Fall back to basic frame checks below when FaceDetector is unavailable or fails.
+              // Basic frame checks above still catch blocked, blank, and odd camera states.
             }
-          }
-
-          const frame = context.getImageData(0, 0, canvas.width, canvas.height).data;
-          let brightness = 0;
-          const sampleStep = Math.max(4, Math.floor(frame.length / 12000));
-          let samples = 0;
-
-          for (let i = 0; i < frame.length; i += sampleStep * 4) {
-            brightness += (frame[i] + frame[i + 1] + frame[i + 2]) / 3;
-            samples += 1;
-          }
-
-          const averageBrightness = brightness / Math.max(1, samples);
-          if (averageBrightness < 18 || averageBrightness > 245) {
-            violationReportedRef.current = true;
-            onViolation?.('Camera view appears blocked, blank, or overexposed.');
-            return;
           }
         }
       }
@@ -167,7 +195,7 @@ export default function BehavioralAnalysisOverlay({
         clearInterval(analysisIntervalRef.current);
       }
     };
-  }, [isRecording, hasPermission, onMetricsUpdate, onViolation]);
+  }, [isRecording, hasPermission, onMetricsUpdate]);
 
   if (!isEnabled || !hasPermission) {
     return null;
