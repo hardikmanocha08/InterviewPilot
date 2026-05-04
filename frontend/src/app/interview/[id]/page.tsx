@@ -428,7 +428,7 @@ export default function InterviewRoom() {
                     interviewId={String(id)}
                     role={interview.role}
                     experienceLevel={interview.experienceLevel}
-                    peerRole={peerRole}
+                    peerRole={peerRole || 'interviewee'}
                     onJoinSession={handlePeerSessionReady}
                 />
             </div>
