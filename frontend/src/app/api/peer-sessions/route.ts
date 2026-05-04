@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const includeMine = req.nextUrl.searchParams.get('includeMine') === 'true';
     const waitingSessions = await PeerSession.find({
       status: 'waiting',
       candidateId: { $ne: user._id }, // Don't show own sessions
@@ -22,6 +23,21 @@ export async function GET(req: NextRequest) {
       .populate('candidateId', 'name email')
       .sort({ createdAt: -1 })
       .lean();
+
+    if (includeMine) {
+      const ownSession = await PeerSession.findOne({
+        candidateId: user._id,
+        status: { $in: ['waiting', 'active'] },
+        isAIPaired: false,
+      })
+        .sort({ createdAt: -1 })
+        .lean();
+
+      return NextResponse.json({
+        availableSessions: waitingSessions,
+        ownSession,
+      });
+    }
 
     return NextResponse.json(waitingSessions);
   } catch (err) {
@@ -46,6 +62,16 @@ export async function POST(req: NextRequest) {
     const interview = await Interview.findById(interviewId);
     if (!interview || interview.user.toString() !== user._id.toString()) {
       return NextResponse.json({ message: 'Interview not found' }, { status: 404 });
+    }
+
+    const existingSession = await PeerSession.findOne({
+      candidateId: user._id,
+      candidateInterviewId: interviewId,
+      status: { $in: ['waiting', 'active'] },
+    });
+
+    if (existingSession) {
+      return NextResponse.json(existingSession);
     }
 
     const peerSession = new PeerSession({

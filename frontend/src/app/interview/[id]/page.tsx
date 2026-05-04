@@ -1,12 +1,22 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
+import BehavioralAnalysisOverlay from '@/app/components/BehavioralAnalysisOverlay';
+import PeerLobby from '@/app/components/PeerLobby';
 import { FiSend, FiCheckCircle, FiChevronRight, FiAlertCircle, FiBarChart2, FiThumbsUp, FiTrendingDown, FiXCircle } from 'react-icons/fi';
 
 type EndReason = 'manual' | 'timeout' | 'abandoned';
+
+interface BehavioralMetric {
+    timestamp: Date;
+    eyeContact: number;
+    confidence: number;
+    speakingPace: 'slow' | 'normal' | 'fast';
+    emotionState: 'neutral' | 'positive' | 'nervous' | 'stressed';
+}
 
 export default function InterviewRoom() {
     const { id } = useParams();
@@ -24,6 +34,7 @@ export default function InterviewRoom() {
     const hasFinalizedRef = useRef(false);
     const timerExpiredRef = useRef(false);
     const canAbandonOnUnmountRef = useRef(false);
+    const submittedBehavioralMetricsRef = useRef(0);
 
     useEffect(() => {
         const fetchSessionData = async () => {
@@ -31,7 +42,9 @@ export default function InterviewRoom() {
                 const res = await api.get(`/interviews/${id}`);
                 const normalizedInterview = {
                     ...res.data,
-                    interviewMode: res.data?.interviewMode === 'untimed' ? 'untimed' : 'timed',
+                    interviewMode: ['untimed', 'peer'].includes(res.data?.interviewMode)
+                        ? res.data.interviewMode
+                        : 'timed',
                     perQuestionTimeSeconds:
                         Number(res.data?.perQuestionTimeSeconds) > 0
                             ? Number(res.data.perQuestionTimeSeconds)
@@ -67,7 +80,7 @@ export default function InterviewRoom() {
     }, [interview?.questions, evaluating]);
 
     useEffect(() => {
-        if (!interview || interview.interviewMode === 'untimed') {
+        if (!interview || interview.interviewMode !== 'timed') {
             return;
         }
 
@@ -77,7 +90,7 @@ export default function InterviewRoom() {
     }, [currentQuestionIndex, interview]);
 
     useEffect(() => {
-        if (!interview || interview.interviewMode === 'untimed' || timeLeftSeconds === null) {
+        if (!interview || interview.interviewMode !== 'timed' || timeLeftSeconds === null) {
             return;
         }
 
@@ -87,7 +100,7 @@ export default function InterviewRoom() {
     }, [timeLeftSeconds, interview]);
 
     useEffect(() => {
-        if (!interview || interview.interviewMode === 'untimed' || timeLeftSeconds === null || hasFinalizedRef.current) {
+        if (!interview || interview.interviewMode !== 'timed' || timeLeftSeconds === null || hasFinalizedRef.current) {
             return;
         }
         if (timeLeftSeconds <= 0) {
@@ -102,7 +115,7 @@ export default function InterviewRoom() {
     }, [interview, timeLeftSeconds]);
 
     useEffect(() => {
-        if (!interview || interview.interviewMode === 'untimed' || timeLeftSeconds !== 0 || timerExpiredRef.current || hasFinalizedRef.current) {
+        if (!interview || interview.interviewMode !== 'timed' || timeLeftSeconds !== 0 || timerExpiredRef.current || hasFinalizedRef.current) {
             return;
         }
 
@@ -181,7 +194,7 @@ export default function InterviewRoom() {
         }
 
         // Timed mode is flow-driven: no per-question analysis screen between questions.
-        if (interview.interviewMode !== 'untimed') {
+        if (interview.interviewMode === 'timed') {
             if (currentQuestionIndex < interview.questions.length - 1) {
                 setCurrentQuestionIndex((curr) => curr + 1);
             } else {
@@ -255,6 +268,30 @@ export default function InterviewRoom() {
         await handleFinishInterview('timeout');
     };
 
+    const handleBehavioralMetricsUpdate = useCallback(async (metrics: BehavioralMetric[]) => {
+        if (!id) {
+            return;
+        }
+
+        const newMetrics = metrics.slice(submittedBehavioralMetricsRef.current);
+        if (newMetrics.length === 0) {
+            return;
+        }
+
+        submittedBehavioralMetricsRef.current = metrics.length;
+
+        try {
+            await api.post(`/interviews/${id}/behavioral-metrics`, { metrics: newMetrics });
+        } catch (error) {
+            submittedBehavioralMetricsRef.current -= newMetrics.length;
+            console.error('Failed to submit behavioral metrics:', error);
+        }
+    }, [id]);
+
+    const handlePeerSessionReady = useCallback((sessionId: string) => {
+        setInterview((current: any) => current ? { ...current, peerSessionId: sessionId } : current);
+    }, []);
+
     if (loading) return <div className="min-h-screen bg-background flex items-center justify-center text-white">Loading Interview Environment...</div>;
 
     if (!interview) {
@@ -273,12 +310,35 @@ export default function InterviewRoom() {
     const minutes = timeLeftSeconds !== null ? Math.floor(timeLeftSeconds / 60) : 0;
     const seconds = timeLeftSeconds !== null ? timeLeftSeconds % 60 : 0;
     const formattedTime = `${minutes}:${String(seconds).padStart(2, '0')}`;
-    const timerPercent = interview.interviewMode !== 'untimed' && interview.perQuestionTimeSeconds
+    const timerPercent = interview.interviewMode === 'timed' && interview.perQuestionTimeSeconds
         ? Math.max(0, Math.min(100, Math.round(((timeLeftSeconds || 0) / interview.perQuestionTimeSeconds) * 100)))
         : 0;
 
+    if (interview.interviewMode === 'peer' && !interview.peerSessionId) {
+        return (
+            <div className="min-h-screen bg-background p-4 sm:p-6">
+                <div className="mb-6">
+                    <button onClick={() => router.push('/dashboard')} className="text-sm text-text-muted hover:text-white transition-colors">
+                        Return to dashboard
+                    </button>
+                </div>
+                <PeerLobby
+                    interviewId={String(id)}
+                    role={interview.role}
+                    experienceLevel={interview.experienceLevel}
+                    onJoinSession={handlePeerSessionReady}
+                />
+            </div>
+        );
+    }
+
     return (
         <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden relative">
+            <BehavioralAnalysisOverlay
+                isEnabled={Boolean(interview.behavioralAnalysis?.isEnabled)}
+                isRecording={!finishing && interview.status !== 'completed'}
+                onMetricsUpdate={handleBehavioralMetricsUpdate}
+            />
             {/* Left panel: Info  & Progress */}
             <div className="w-full md:w-1/3 bg-surface border-b md:border-b-0 md:border-r border-border p-3 sm:p-4 md:p-6 flex flex-col h-auto md:h-full overflow-hidden">
                 <div className="mb-4 md:mb-8">
@@ -299,7 +359,7 @@ export default function InterviewRoom() {
                         <span className="bg-white/10 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">{interview.experienceLevel}</span>
                         <span className="hidden sm:inline">|</span>
                         <span className="capitalize">{interview.interviewMode}</span>
-                        {interview.interviewMode !== 'untimed' && timeLeftSeconds !== null && (
+                        {interview.interviewMode === 'timed' && timeLeftSeconds !== null && (
                             <>
                                 <span className="hidden sm:inline">|</span>
                                 <span className={`font-semibold ${timeLeftSeconds <= 20 ? 'text-red-400' : 'text-accent'}`}>
@@ -333,7 +393,7 @@ export default function InterviewRoom() {
 
             {/* Right panel: Chat / Interaction Area */}
             <div className="w-full md:w-2/3 flex flex-col h-auto md:h-full">
-                {interview.interviewMode !== 'untimed' && timeLeftSeconds !== null && (
+                {interview.interviewMode === 'timed' && timeLeftSeconds !== null && (
                     <div className="px-3 sm:px-4 md:px-10 py-3 sm:py-4 md:py-4 flex-shrink-0">
                         <div className="bg-surface border border-border rounded-lg md:rounded-2xl p-3 md:p-3">
                             <div className="flex items-center justify-between mb-2 md:mb-3">

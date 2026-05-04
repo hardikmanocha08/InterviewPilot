@@ -7,10 +7,11 @@ import { FiUsers, FiPlus, FiArrowRight, FiLoader, FiAlertCircle } from 'react-ic
 
 interface PeerSession {
   _id: string;
-  candidateId: {
+  candidateId?: {
     name: string;
     email: string;
   };
+  status?: 'waiting' | 'active' | 'completed';
   role: string;
   experienceLevel: string;
   createdAt: string;
@@ -19,24 +20,37 @@ interface PeerSession {
 interface PeerLobbyProps {
   onJoinSession: (sessionId: string) => void;
   interviewId: string;
+  role: string;
+  experienceLevel: string;
 }
 
-export default function PeerLobby({ onJoinSession, interviewId }: PeerLobbyProps) {
+export default function PeerLobby({ onJoinSession, interviewId, role, experienceLevel }: PeerLobbyProps) {
   const [sessions, setSessions] = useState<PeerSession[]>([]);
+  const [ownSession, setOwnSession] = useState<PeerSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchPeerSessions = async () => {
     try {
-      const res = await api.get('/peer-sessions');
-      setSessions(res.data || []);
+      const res = await api.get('/peer-sessions?includeMine=true');
+      const data = res.data || {};
+      const availableSessions = Array.isArray(data) ? data : data.availableSessions || [];
+      const currentOwnSession = Array.isArray(data) ? null : data.ownSession || null;
+
+      setSessions(availableSessions);
+      setOwnSession(currentOwnSession);
       setError(null);
+
+      if (currentOwnSession?.status === 'active') {
+        onJoinSession(currentOwnSession._id);
+      }
     } catch (err) {
       console.error('Failed to fetch peer sessions:', err);
       setError('Failed to load available peers');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -44,7 +58,25 @@ export default function PeerLobby({ onJoinSession, interviewId }: PeerLobbyProps
     fetchPeerSessions();
     const interval = setInterval(fetchPeerSessions, 10000); // Refresh every 10 seconds
     return () => clearInterval(interval);
-  }, []);
+  }, [onJoinSession]);
+
+  const handleCreateSession = async () => {
+    try {
+      setRefreshing(true);
+      const res = await api.post('/peer-sessions', {
+        interviewId,
+        role,
+        experienceLevel,
+      });
+      setOwnSession(res.data);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to create peer session:', err);
+      setError('Failed to create a peer session');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleJoinSession = async (sessionId: string) => {
     try {
@@ -82,6 +114,16 @@ export default function PeerLobby({ onJoinSession, interviewId }: PeerLobbyProps
         </motion.div>
       )}
 
+      {ownSession?.status === 'waiting' && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-4 p-4 bg-primary/10 border border-primary/20 rounded-lg text-primary"
+        >
+          Your peer session is live. Waiting for another candidate to join...
+        </motion.div>
+      )}
+
       {loading ? (
         <div className="flex flex-col items-center justify-center py-12">
           <FiLoader className="w-8 h-8 text-primary animate-spin mb-4" />
@@ -95,7 +137,14 @@ export default function PeerLobby({ onJoinSession, interviewId }: PeerLobbyProps
         >
           <FiUsers className="w-12 h-12 text-text-muted mx-auto mb-4 opacity-50" />
           <p className="text-text-muted mb-4">No peers currently waiting for interviews</p>
-          <p className="text-sm text-text-muted">Try again in a moment or create a session to wait for others</p>
+          <button
+            onClick={handleCreateSession}
+            disabled={refreshing || Boolean(ownSession)}
+            className="mx-auto bg-primary hover:bg-primary-hover disabled:opacity-50 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2"
+          >
+            <FiPlus className="w-4 h-4" />
+            <span>{ownSession ? 'Waiting for peer' : 'Create session'}</span>
+          </button>
         </motion.div>
       ) : (
         <motion.div className="space-y-3">

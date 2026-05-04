@@ -12,7 +12,15 @@ export async function POST(req: NextRequest) {
     return error;
   }
 
-  const { role, experienceLevel, industryMode, questionCount, interviewMode } = await req.json();
+  const {
+    role,
+    experienceLevel,
+    industryMode,
+    questionCount,
+    interviewMode,
+    enableBehavioralAnalysis,
+    peerMode,
+  } = await req.json();
 
   if (!role || !experienceLevel) {
     return NextResponse.json({ message: 'Role and experience level are required' }, { status: 400 });
@@ -23,7 +31,11 @@ export async function POST(req: NextRequest) {
     const preferredCount = user.settings?.preferredQuestionCount || 3;
     const totalQuestions = Math.max(3, Math.min(7, countFromRequest || preferredCount));
     const selectedIndustry = industryMode || user.industryMode || 'Product company';
-    const selectedMode: 'timed' | 'untimed' = interviewMode === 'untimed' ? 'untimed' : 'timed';
+    const selectedMode: 'timed' | 'untimed' | 'peer' = peerMode
+      ? 'peer'
+      : interviewMode === 'untimed'
+        ? 'untimed'
+        : 'timed';
     const baseTimeByExperience: Record<string, number> = {
       Fresher: 150,
       '1-3 years': 210,
@@ -59,6 +71,14 @@ export async function POST(req: NextRequest) {
       interviewMode: selectedMode,
       perQuestionTimeSeconds,
       questions,
+      behavioralAnalysis: {
+        isEnabled: Boolean(enableBehavioralAnalysis),
+        metrics: [],
+        averageEyeContact: 0,
+        averageConfidence: 0,
+        overallEmotionTrend: 'neutral',
+        communicationFeedback: '',
+      },
     });
 
     return NextResponse.json(interview, { status: 201 });
