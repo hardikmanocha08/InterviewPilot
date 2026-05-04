@@ -122,6 +122,14 @@ export async function PATCH(
       session.interviewerMicActive = body.micActive;
     }
   }
+  if (typeof body.micLevel === 'number') {
+    const micLevel = Math.max(0, Math.min(100, Math.round(body.micLevel)));
+    if (peerRole === 'interviewee') {
+      session.candidateMicLevel = micLevel;
+    } else {
+      session.interviewerMicLevel = micLevel;
+    }
+  }
   if (peerRole === 'interviewer' && typeof body.rtcOffer === 'string') {
     session.rtcOffer = body.rtcOffer;
     session.rtcAnswer = '';

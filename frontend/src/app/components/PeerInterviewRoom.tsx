@@ -17,6 +17,8 @@ interface PeerSessionState {
   codeText?: string;
   candidateMicActive?: boolean;
   interviewerMicActive?: boolean;
+  candidateMicLevel?: number;
+  interviewerMicLevel?: number;
   rtcOffer?: string;
   rtcAnswer?: string;
   candidateIceCandidates?: string[];
@@ -36,6 +38,8 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const [micActive, setMicActive] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>('new');
+  const [localMicLevel, setLocalMicLevel] = useState(0);
+  const [remoteMicLevel, setRemoteMicLevel] = useState(0);
   const [saving, setSaving] = useState(false);
 
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -44,12 +48,91 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const handledRemoteCandidatesRef = useRef(new Set<string>());
   const hasSetRemoteAnswerRef = useRef(false);
+  const localAudioContextRef = useRef<AudioContext | null>(null);
+  const remoteAudioContextRef = useRef<AudioContext | null>(null);
+  const localMeterFrameRef = useRef<number | null>(null);
+  const remoteMeterFrameRef = useRef<number | null>(null);
+  const lastMicLevelPatchRef = useRef(0);
 
   const patchSession = useCallback(async (payload: Record<string, unknown>) => {
     const res = await api.patch(`/peer-sessions/${sessionId}/state`, payload);
     setSession(res.data.session || {});
     return res.data.session as PeerSessionState;
   }, [sessionId]);
+
+  const calculateLevel = (analyser: AnalyserNode, data: Uint8Array) => {
+    analyser.getByteTimeDomainData(data);
+    let sum = 0;
+    for (const value of data) {
+      const normalized = (value - 128) / 128;
+      sum += normalized * normalized;
+    }
+    return Math.min(100, Math.round(Math.sqrt(sum / data.length) * 180));
+  };
+
+  const stopLocalMeter = useCallback(() => {
+    if (localMeterFrameRef.current !== null) {
+      cancelAnimationFrame(localMeterFrameRef.current);
+      localMeterFrameRef.current = null;
+    }
+    void localAudioContextRef.current?.close();
+    localAudioContextRef.current = null;
+    setLocalMicLevel(0);
+  }, []);
+
+  const startLocalMeter = useCallback((stream: MediaStream) => {
+    stopLocalMeter();
+    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+    const audioContext = new AudioContextCtor();
+    void audioContext.resume();
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 512;
+    audioContext.createMediaStreamSource(stream).connect(analyser);
+    localAudioContextRef.current = audioContext;
+    const data = new Uint8Array(analyser.fftSize);
+
+    const tick = () => {
+      const level = calculateLevel(analyser, data);
+      setLocalMicLevel(level);
+      const now = Date.now();
+      if (now - lastMicLevelPatchRef.current > 500) {
+        lastMicLevelPatchRef.current = now;
+        void patchSession({ micLevel: level });
+      }
+      localMeterFrameRef.current = requestAnimationFrame(tick);
+    };
+
+    tick();
+  }, [patchSession, stopLocalMeter]);
+
+  const stopRemoteMeter = useCallback(() => {
+    if (remoteMeterFrameRef.current !== null) {
+      cancelAnimationFrame(remoteMeterFrameRef.current);
+      remoteMeterFrameRef.current = null;
+    }
+    void remoteAudioContextRef.current?.close();
+    remoteAudioContextRef.current = null;
+    setRemoteMicLevel(0);
+  }, []);
+
+  const startRemoteMeter = useCallback((stream: MediaStream) => {
+    stopRemoteMeter();
+    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+    const audioContext = new AudioContextCtor();
+    void audioContext.resume();
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 512;
+    audioContext.createMediaStreamSource(stream).connect(analyser);
+    remoteAudioContextRef.current = audioContext;
+    const data = new Uint8Array(analyser.fftSize);
+
+    const tick = () => {
+      setRemoteMicLevel(calculateLevel(analyser, data));
+      remoteMeterFrameRef.current = requestAnimationFrame(tick);
+    };
+
+    tick();
+  }, [stopRemoteMeter]);
 
   const ensurePeerConnection = useCallback(() => {
     if (peerConnectionRef.current) {
@@ -74,6 +157,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = event.streams[0];
         remoteAudioRef.current.volume = 1;
+        startRemoteMeter(event.streams[0]);
         void remoteAudioRef.current.play().catch(() => {
           setMicError('Remote audio is connected, but the browser blocked autoplay. Click the mic button once on this page.');
         });
@@ -81,7 +165,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     };
 
     return pc;
-  }, [patchSession]);
+  }, [patchSession, startRemoteMeter]);
 
   const addLocalTracks = useCallback((stream: MediaStream) => {
     ensurePeerConnection();
@@ -122,6 +206,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       });
       localStreamRef.current = stream;
       addLocalTracks(stream);
+      startLocalMeter(stream);
       setMicActive(true);
       await patchSession({ micActive: true });
 
@@ -138,6 +223,8 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
 
   const stopMic = useCallback(async () => {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    stopLocalMeter();
+    stopRemoteMeter();
     if (audioSenderRef.current) {
       await audioSenderRef.current.replaceTrack(null);
     }
@@ -148,8 +235,8 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     handledRemoteCandidatesRef.current.clear();
     hasSetRemoteAnswerRef.current = false;
     setMicActive(false);
-    await patchSession({ micActive: false });
-  }, [patchSession]);
+    await patchSession({ micActive: false, micLevel: 0 });
+  }, [patchSession, stopLocalMeter, stopRemoteMeter]);
 
   useEffect(() => {
     const fetchState = async () => {
@@ -219,8 +306,10 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     return () => {
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
       peerConnectionRef.current?.close();
+      stopLocalMeter();
+      stopRemoteMeter();
     };
-  }, []);
+  }, [stopLocalMeter, stopRemoteMeter]);
 
   const saveQuestion = async () => {
     setSaving(true);
@@ -240,8 +329,35 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     }
   };
 
+  const playRemoteAudio = () => {
+    void remoteAudioRef.current?.play().catch(() => {
+      setMicError('Remote audio could not start. Check browser autoplay settings and output device.');
+    });
+  };
+
   const interviewerMicActive = Boolean(session.interviewerMicActive);
   const intervieweeMicActive = Boolean(session.candidateMicActive);
+  const interviewerLevel = effectiveRole === 'interviewer'
+    ? localMicLevel
+    : session.interviewerMicLevel || 0;
+  const intervieweeLevel = effectiveRole === 'interviewee'
+    ? localMicLevel
+    : session.candidateMicLevel || 0;
+
+  const MicLevel = ({ label, level, active }: { label: string; level: number; active: boolean }) => (
+    <div className="min-w-32">
+      <div className="flex items-center justify-between text-[10px] text-text-muted mb-1">
+        <span>{label}</span>
+        <span>{active ? `${level}%` : 'off'}</span>
+      </div>
+      <div className="h-1.5 bg-background border border-border rounded-full overflow-hidden">
+        <div
+          className={`h-full transition-all ${level > 4 ? 'bg-green-400' : 'bg-border'}`}
+          style={{ width: `${Math.max(active ? 4 : 0, level)}%` }}
+        />
+      </div>
+    </div>
+  );
 
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
@@ -262,6 +378,17 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
           <span className="hidden sm:inline text-xs px-2 py-1 rounded border border-border text-text-muted">
             Audio: {connectionState}
           </span>
+          <button
+            onClick={playRemoteAudio}
+            className="hidden sm:inline text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-white hover:border-primary"
+          >
+            Play remote
+          </button>
+          <div className="hidden md:flex items-center gap-3">
+            <MicLevel label="Interviewer" level={interviewerLevel} active={interviewerMicActive} />
+            <MicLevel label="Interviewee" level={intervieweeLevel} active={intervieweeMicActive} />
+            <MicLevel label="Remote in" level={remoteMicLevel} active={remoteMicLevel > 0} />
+          </div>
           <button
             onClick={micActive ? stopMic : startMic}
             className={`p-3 rounded-lg text-white ${micActive ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary-hover'}`}

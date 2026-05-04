@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FiCamera, FiEye, FiZap, FiSmile } from 'react-icons/fi';
 
 interface BehavioralMetric {
@@ -41,6 +41,11 @@ export default function BehavioralAnalysisOverlay({
     emotion: 'neutral',
     pace: 'normal',
   });
+  const [cameraHealth, setCameraHealth] = useState({
+    brightness: 0,
+    variance: 0,
+    status: 'Starting camera',
+  });
   const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const voiceAnalysisRef = useRef<{
     lastVolume: number;
@@ -52,6 +57,16 @@ export default function BehavioralAnalysisOverlay({
   useEffect(() => {
     onViolationRef.current = onViolation;
   }, [onViolation]);
+
+  const reportViolation = useCallback((reason: string) => {
+    if (violationReportedRef.current) {
+      return;
+    }
+
+    violationReportedRef.current = true;
+    setCameraHealth((current) => ({ ...current, status: reason }));
+    onViolationRef.current?.(reason);
+  }, []);
 
   useEffect(() => {
     if (!isEnabled) return;
@@ -65,16 +80,10 @@ export default function BehavioralAnalysisOverlay({
           videoRef.current.srcObject = stream;
           stream.getVideoTracks().forEach((track) => {
             track.onended = () => {
-              if (!violationReportedRef.current) {
-                violationReportedRef.current = true;
-                onViolationRef.current?.('Camera feed stopped.');
-              }
+              reportViolation('Camera feed stopped.');
             };
             track.onmute = () => {
-              if (!violationReportedRef.current) {
-                violationReportedRef.current = true;
-                onViolationRef.current?.('Camera feed was muted or blocked.');
-              }
+              reportViolation('Camera feed was muted or blocked.');
             };
           });
           await videoRef.current.play();
@@ -83,10 +92,7 @@ export default function BehavioralAnalysisOverlay({
       } catch (err) {
         console.error('Camera permission denied:', err);
         setHasPermission(false);
-        if (!violationReportedRef.current) {
-          violationReportedRef.current = true;
-          onViolationRef.current?.('Camera permission failed or camera is unavailable.');
-        }
+        reportViolation('Camera permission failed or camera is unavailable.');
       }
     };
 
@@ -98,7 +104,7 @@ export default function BehavioralAnalysisOverlay({
         tracks.forEach(track => track.stop());
       }
     };
-  }, [isEnabled]);
+  }, [isEnabled, reportViolation]);
 
   useEffect(() => {
     if (!isRecording || !hasPermission) return;
@@ -110,8 +116,7 @@ export default function BehavioralAnalysisOverlay({
         const canvas = canvasRef.current;
 
         if (!video.videoWidth || !video.videoHeight || video.paused || video.ended) {
-          violationReportedRef.current = true;
-          onViolationRef.current?.('Camera feed is not active.');
+          reportViolation('Camera feed is not active.');
           return;
         }
 
@@ -137,9 +142,14 @@ export default function BehavioralAnalysisOverlay({
 
           const averageBrightness = brightness / Math.max(1, samples);
           const variance = brightnessSquared / Math.max(1, samples) - averageBrightness * averageBrightness;
-          if (averageBrightness < 35 || averageBrightness > 245 || variance < 6) {
-            violationReportedRef.current = true;
-            onViolationRef.current?.('Camera view appears blocked, blank, or overexposed.');
+          setCameraHealth({
+            brightness: Math.round(averageBrightness),
+            variance: Math.round(variance),
+            status: 'Camera active',
+          });
+
+          if (averageBrightness < 55 || averageBrightness > 245 || variance < 12) {
+            reportViolation('Camera view appears blocked, blank, or overexposed.');
             return;
           }
 
@@ -149,8 +159,7 @@ export default function BehavioralAnalysisOverlay({
               const detector = new FaceDetectorCtor({ fastMode: true, maxDetectedFaces: 1 });
               const faces = await detector.detect(canvas);
               if (!faces.length) {
-                violationReportedRef.current = true;
-                onViolationRef.current?.('No face detected in camera.');
+                reportViolation('No face detected in camera.');
                 return;
               }
             } catch {
@@ -195,7 +204,7 @@ export default function BehavioralAnalysisOverlay({
         clearInterval(analysisIntervalRef.current);
       }
     };
-  }, [isRecording, hasPermission, onMetricsUpdate]);
+  }, [isRecording, hasPermission, onMetricsUpdate, reportViolation]);
 
   if (!isEnabled || !hasPermission) {
     return null;
@@ -251,9 +260,11 @@ export default function BehavioralAnalysisOverlay({
       <div className="px-3 py-2 bg-surface border-t border-border flex items-center justify-between">
         <div className="flex items-center space-x-1.5 text-xs text-text-muted">
           <FiCamera className="w-3 h-3 text-primary animate-pulse" />
-          <span>Live Analysis</span>
+          <span>{cameraHealth.status}</span>
         </div>
-        <span className="text-xs font-semibold text-primary">{metrics.length} frames</span>
+        <span className="text-xs font-semibold text-primary">
+          B{cameraHealth.brightness} V{cameraHealth.variance}
+        </span>
       </div>
     </div>
   );

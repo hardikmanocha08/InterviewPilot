@@ -16,6 +16,8 @@ export interface IPeerSession extends Document {
   codeText?: string;
   candidateMicActive?: boolean;
   interviewerMicActive?: boolean;
+  candidateMicLevel?: number;
+  interviewerMicLevel?: number;
   rtcOffer?: string;
   rtcAnswer?: string;
   candidateIceCandidates?: string[];
@@ -91,6 +93,14 @@ const peerSessionSchema = new mongoose.Schema<IPeerSession>(
     interviewerMicActive: {
       type: Boolean,
       default: false,
+    },
+    candidateMicLevel: {
+      type: Number,
+      default: 0,
+    },
+    interviewerMicLevel: {
+      type: Number,
+      default: 0,
     },
     rtcOffer: {
       type: String,

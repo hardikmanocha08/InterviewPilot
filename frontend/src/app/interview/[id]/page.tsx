@@ -39,6 +39,7 @@ export default function InterviewRoom() {
     const timerExpiredRef = useRef(false);
     const canAbandonOnUnmountRef = useRef(false);
     const submittedBehavioralMetricsRef = useRef(0);
+    const proctorViolationRef = useRef(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const answerAudioChunksRef = useRef<Blob[]>([]);
 
@@ -298,10 +299,22 @@ export default function InterviewRoom() {
         setInterview((current: any) => current ? { ...current, peerSessionId: sessionId } : current);
     }, []);
 
-    const handleBehavioralViolation = useCallback((reason: string) => {
+    const handleBehavioralViolation = useCallback(async (reason: string) => {
+        if (proctorViolationRef.current || !id) {
+            return;
+        }
+        proctorViolationRef.current = true;
+        hasFinalizedRef.current = true;
+        setFinishing(true);
         alert(`Interview stopped: ${reason}`);
-        void handleFinishInterview('abandoned');
-    }, [handleFinishInterview]);
+        try {
+            await api.post(`/interviews/${id}/finish`, { endedReason: 'abandoned' });
+        } catch (error) {
+            console.error('Failed to finish after proctor violation:', error);
+        } finally {
+            router.replace(`/dashboard/history/${id}`);
+        }
+    }, [id, router]);
 
     const handlePeerFinish = useCallback(() => {
         void handleFinishInterview('manual');
