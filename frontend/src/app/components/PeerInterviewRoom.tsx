@@ -128,7 +128,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
         const source = audioContext.createBufferSource();
         const gain = audioContext.createGain();
-        gain.gain.value = 2.5;
+    gain.gain.value = 20;
         source.buffer = audioBuffer;
         source.connect(gain).connect(audioContext.destination);
 
@@ -274,7 +274,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     const audioContext = new AudioContextCtor();
     const source = audioContext.createMediaStreamSource(stream);
     const gain = audioContext.createGain();
-    gain.gain.value = 2;
+    gain.gain.value = 20;
     source.connect(gain).connect(audioContext.destination);
 
     remotePlaybackContextRef.current = audioContext;
