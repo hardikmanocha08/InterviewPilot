@@ -60,7 +60,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     return res.data.session as PeerSessionState;
   }, [sessionId]);
 
-  const calculateLevel = (analyser: AnalyserNode, data: Uint8Array) => {
+  const calculateLevel = (analyser: AnalyserNode, data: Uint8Array<ArrayBuffer>) => {
     analyser.getByteTimeDomainData(data);
     let sum = 0;
     for (const value of data) {
@@ -89,7 +89,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     analyser.fftSize = 512;
     audioContext.createMediaStreamSource(stream).connect(analyser);
     localAudioContextRef.current = audioContext;
-    const data = new Uint8Array(analyser.fftSize);
+    const data = new Uint8Array(new ArrayBuffer(analyser.fftSize));
 
     const tick = () => {
       const level = calculateLevel(analyser, data);
@@ -124,7 +124,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     analyser.fftSize = 512;
     audioContext.createMediaStreamSource(stream).connect(analyser);
     remoteAudioContextRef.current = audioContext;
-    const data = new Uint8Array(analyser.fftSize);
+    const data = new Uint8Array(new ArrayBuffer(analyser.fftSize));
 
     const tick = () => {
       setRemoteMicLevel(calculateLevel(analyser, data));
