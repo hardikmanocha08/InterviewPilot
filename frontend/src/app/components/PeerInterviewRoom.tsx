@@ -40,6 +40,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>('new');
   const [localMicLevel, setLocalMicLevel] = useState(0);
   const [remoteMicLevel, setRemoteMicLevel] = useState(0);
+  const [remotePlaybackReady, setRemotePlaybackReady] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -50,6 +51,10 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const hasSetRemoteAnswerRef = useRef(false);
   const localAudioContextRef = useRef<AudioContext | null>(null);
   const remoteAudioContextRef = useRef<AudioContext | null>(null);
+  const remotePlaybackContextRef = useRef<AudioContext | null>(null);
+  const remotePlaybackSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const remoteGainRef = useRef<GainNode | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   const localMeterFrameRef = useRef<number | null>(null);
   const remoteMeterFrameRef = useRef<number | null>(null);
   const lastMicLevelPatchRef = useRef(0);
@@ -115,6 +120,34 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     setRemoteMicLevel(0);
   }, []);
 
+  const stopRemotePlayback = useCallback(() => {
+    remotePlaybackSourceRef.current?.disconnect();
+    remoteGainRef.current?.disconnect();
+    void remotePlaybackContextRef.current?.close();
+    remotePlaybackSourceRef.current = null;
+    remoteGainRef.current = null;
+    remotePlaybackContextRef.current = null;
+    setRemotePlaybackReady(false);
+  }, []);
+
+  const startRemotePlayback = useCallback((stream: MediaStream) => {
+    stopRemotePlayback();
+    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+    const audioContext = new AudioContextCtor();
+    const source = audioContext.createMediaStreamSource(stream);
+    const gain = audioContext.createGain();
+    gain.gain.value = 2;
+    source.connect(gain).connect(audioContext.destination);
+
+    remotePlaybackContextRef.current = audioContext;
+    remotePlaybackSourceRef.current = source;
+    remoteGainRef.current = gain;
+    setRemotePlaybackReady(audioContext.state === 'running');
+    void audioContext.resume().then(() => {
+      setRemotePlaybackReady(true);
+    });
+  }, [stopRemotePlayback]);
+
   const startRemoteMeter = useCallback((stream: MediaStream) => {
     stopRemoteMeter();
     const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
@@ -155,9 +188,13 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
 
     pc.ontrack = (event) => {
       if (remoteAudioRef.current) {
-        remoteAudioRef.current.srcObject = event.streams[0];
+        const remoteStream = event.streams[0];
+        remoteStreamRef.current = remoteStream;
+        remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current.muted = false;
         remoteAudioRef.current.volume = 1;
-        startRemoteMeter(event.streams[0]);
+        startRemoteMeter(remoteStream);
+        startRemotePlayback(remoteStream);
         void remoteAudioRef.current.play().catch(() => {
           setMicError('Remote audio is connected, but the browser blocked autoplay. Click the mic button once on this page.');
         });
@@ -165,7 +202,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     };
 
     return pc;
-  }, [patchSession, startRemoteMeter]);
+  }, [patchSession, startRemoteMeter, startRemotePlayback]);
 
   const addLocalTracks = useCallback((stream: MediaStream) => {
     ensurePeerConnection();
@@ -225,6 +262,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     stopLocalMeter();
     stopRemoteMeter();
+    stopRemotePlayback();
     if (audioSenderRef.current) {
       await audioSenderRef.current.replaceTrack(null);
     }
@@ -236,7 +274,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     hasSetRemoteAnswerRef.current = false;
     setMicActive(false);
     await patchSession({ micActive: false, micLevel: 0 });
-  }, [patchSession, stopLocalMeter, stopRemoteMeter]);
+  }, [patchSession, stopLocalMeter, stopRemoteMeter, stopRemotePlayback]);
 
   useEffect(() => {
     const fetchState = async () => {
@@ -308,8 +346,9 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       peerConnectionRef.current?.close();
       stopLocalMeter();
       stopRemoteMeter();
+      stopRemotePlayback();
     };
-  }, [stopLocalMeter, stopRemoteMeter]);
+  }, [stopLocalMeter, stopRemoteMeter, stopRemotePlayback]);
 
   const saveQuestion = async () => {
     setSaving(true);
@@ -330,6 +369,12 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   };
 
   const playRemoteAudio = () => {
+    if (remoteStreamRef.current) {
+      startRemotePlayback(remoteStreamRef.current);
+    }
+    void remotePlaybackContextRef.current?.resume().then(() => {
+      setRemotePlaybackReady(true);
+    });
     void remoteAudioRef.current?.play().catch(() => {
       setMicError('Remote audio could not start. Check browser autoplay settings and output device.');
     });
@@ -361,7 +406,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
 
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
-      <audio ref={remoteAudioRef} autoPlay playsInline />
+      <audio ref={remoteAudioRef} autoPlay playsInline controls className="fixed left-4 bottom-4 z-50 h-8 w-64 opacity-80" />
 
       <div className="border-b border-border bg-surface px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
         <div>
@@ -380,9 +425,9 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
           </span>
           <button
             onClick={playRemoteAudio}
-            className="hidden sm:inline text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-white hover:border-primary"
+            className={`hidden sm:inline text-xs px-2 py-1 rounded border hover:text-white hover:border-primary ${remotePlaybackReady ? 'border-green-500/30 text-green-300 bg-green-500/10' : 'border-border text-text-muted'}`}
           >
-            Play remote
+            {remotePlaybackReady ? 'Audio enabled' : 'Enable audio'}
           </button>
           <div className="hidden md:flex items-center gap-3">
             <MicLevel label="Interviewer" level={interviewerLevel} active={interviewerMicActive} />

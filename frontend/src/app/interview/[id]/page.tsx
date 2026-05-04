@@ -153,6 +153,47 @@ export default function InterviewRoom() {
     }, [interview]);
 
     useEffect(() => {
+        if (!interview || interview.status === 'completed') {
+            return;
+        }
+
+        const endForFocusViolation = (reason: string) => {
+            if (hasFinalizedRef.current || proctorViolationRef.current) {
+                return;
+            }
+            proctorViolationRef.current = true;
+            hasFinalizedRef.current = true;
+            setFinishing(true);
+            alert(`Interview stopped: ${reason}`);
+            api.post(`/interviews/${id}/finish`, { endedReason: 'abandoned' })
+                .catch((error) => {
+                    console.error('Failed to finish after focus violation:', error);
+                })
+                .finally(() => {
+                    router.replace(`/dashboard/history/${id}`);
+                });
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.hidden) {
+                endForFocusViolation('Tab changed, minimized, or hidden.');
+            }
+        };
+
+        const handleWindowBlur = () => {
+            endForFocusViolation('Interview window lost focus.');
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('blur', handleWindowBlur);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('blur', handleWindowBlur);
+        };
+    }, [id, interview, router]);
+
+    useEffect(() => {
         return () => {
             if (!id || hasFinalizedRef.current || !canAbandonOnUnmountRef.current) {
                 return;

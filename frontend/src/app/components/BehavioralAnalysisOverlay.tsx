@@ -148,7 +148,12 @@ export default function BehavioralAnalysisOverlay({
             status: 'Camera active',
           });
 
-          if (averageBrightness < 55 || averageBrightness > 245 || variance < 12) {
+          if (averageBrightness < 55) {
+            reportViolation('Camera went black during the interview.');
+            return;
+          }
+
+          if (averageBrightness > 245 || variance < 12) {
             reportViolation('Camera view appears blocked, blank, or overexposed.');
             return;
           }
