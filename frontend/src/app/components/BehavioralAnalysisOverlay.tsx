@@ -17,6 +17,13 @@ interface BehavioralAnalysisProps {
   isRecording: boolean;
 }
 
+interface CurrentBehavioralState {
+  eyeContact: number;
+  confidence: number;
+  emotion: BehavioralMetric['emotionState'];
+  pace: BehavioralMetric['speakingPace'];
+}
+
 export default function BehavioralAnalysisOverlay({
   isEnabled,
   onMetricsUpdate,
@@ -26,11 +33,11 @@ export default function BehavioralAnalysisOverlay({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hasPermission, setHasPermission] = useState(false);
   const [metrics, setMetrics] = useState<BehavioralMetric[]>([]);
-  const [currentState, setCurrentState] = useState({
+  const [currentState, setCurrentState] = useState<CurrentBehavioralState>({
     eyeContact: 0,
     confidence: 0,
-    emotion: 'neutral' as const,
-    pace: 'normal' as const,
+    emotion: 'neutral',
+    pace: 'normal',
   });
   const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const voiceAnalysisRef = useRef<{
