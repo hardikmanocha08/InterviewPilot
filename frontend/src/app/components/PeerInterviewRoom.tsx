@@ -62,6 +62,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const localAudioContextRef = useRef<AudioContext | null>(null);
   const remoteAudioContextRef = useRef<AudioContext | null>(null);
   const remotePlaybackContextRef = useRef<AudioContext | null>(null);
+  const relayAudioContextRef = useRef<AudioContext | null>(null);
   const remotePlaybackSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const remoteGainRef = useRef<GainNode | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
@@ -72,6 +73,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const playedRelayChunkIdsRef = useRef(new Set<string>());
   const relayQueueRef = useRef<PeerAudioChunk[]>([]);
   const relayPlayingRef = useRef(false);
+  const relayNextStartTimeRef = useRef(0);
 
   const patchSession = useCallback(async (payload: Record<string, unknown>) => {
     const res = await api.patch(`/peer-sessions/${sessionId}/state`, payload);
@@ -86,13 +88,34 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     reader.readAsDataURL(blob);
   });
 
+  const dataUrlToArrayBuffer = async (dataUrl: string) => {
+    const response = await fetch(dataUrl);
+    return response.arrayBuffer();
+  };
+
+  const ensureRelayAudioContext = useCallback(() => {
+    if (relayAudioContextRef.current) {
+      void relayAudioContextRef.current.resume();
+      return relayAudioContextRef.current;
+    }
+
+    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+    const audioContext = new AudioContextCtor();
+    relayAudioContextRef.current = audioContext;
+    relayNextStartTimeRef.current = audioContext.currentTime;
+    void audioContext.resume().then(() => {
+      setRelayPlaybackReady(true);
+    });
+    return audioContext;
+  }, []);
+
   const playRelayQueue = useCallback(async () => {
     if (relayPlayingRef.current) {
       return;
     }
 
     relayPlayingRef.current = true;
-    setRelayPlaybackReady(true);
+    const audioContext = ensureRelayAudioContext();
 
     while (relayQueueRef.current.length > 0) {
       const chunk = relayQueueRef.current.shift();
@@ -100,20 +123,26 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
         continue;
       }
 
-      await new Promise<void>((resolve) => {
-        const audio = new Audio(chunk.data);
-        audio.volume = 1;
-        audio.onended = () => resolve();
-        audio.onerror = () => resolve();
-        audio.play().catch(() => {
-          setRelayPlaybackReady(false);
-          resolve();
-        });
-      });
+      try {
+        const arrayBuffer = await dataUrlToArrayBuffer(chunk.data);
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+        const source = audioContext.createBufferSource();
+        const gain = audioContext.createGain();
+        gain.gain.value = 2.5;
+        source.buffer = audioBuffer;
+        source.connect(gain).connect(audioContext.destination);
+
+        const startAt = Math.max(audioContext.currentTime + 0.05, relayNextStartTimeRef.current);
+        source.start(startAt);
+        relayNextStartTimeRef.current = startAt + audioBuffer.duration;
+      } catch (error) {
+        console.error('Failed to play relayed audio chunk:', error);
+        setRelayPlaybackReady(false);
+      }
     }
 
     relayPlayingRef.current = false;
-  }, []);
+  }, [ensureRelayAudioContext]);
 
   const enqueueRelayChunks = useCallback((chunks: PeerAudioChunk[] = []) => {
     for (const chunk of chunks) {
@@ -230,10 +259,13 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     remotePlaybackSourceRef.current?.disconnect();
     remoteGainRef.current?.disconnect();
     void remotePlaybackContextRef.current?.close();
+    void relayAudioContextRef.current?.close();
     remotePlaybackSourceRef.current = null;
     remoteGainRef.current = null;
     remotePlaybackContextRef.current = null;
+    relayAudioContextRef.current = null;
     setRemotePlaybackReady(false);
+    setRelayPlaybackReady(false);
   }, []);
 
   const startRemotePlayback = useCallback((stream: MediaStream) => {
@@ -350,6 +382,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       localStreamRef.current = stream;
       addLocalTracks(stream);
       startLocalMeter(stream);
+      ensureRelayAudioContext();
       startAudioRelay(stream);
       setMicActive(true);
       await patchSession({ micActive: true });
@@ -363,7 +396,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       console.error('Microphone failed:', error);
       setMicError('Microphone permission failed. Check browser permissions and try again.');
     }
-  }, [addLocalTracks, answerOffer, createOffer, effectiveRole, patchSession, session.rtcOffer, startAudioRelay]);
+  }, [addLocalTracks, answerOffer, createOffer, effectiveRole, ensureRelayAudioContext, patchSession, session.rtcOffer, startAudioRelay]);
 
   const stopMic = useCallback(async () => {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -485,6 +518,9 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     }
     void remotePlaybackContextRef.current?.resume().then(() => {
       setRemotePlaybackReady(true);
+    });
+    void ensureRelayAudioContext().resume().then(() => {
+      setRelayPlaybackReady(true);
     });
     void remoteAudioRef.current?.play().catch(() => {
       setMicError('Remote audio could not start. Check browser autoplay settings and output device.');
