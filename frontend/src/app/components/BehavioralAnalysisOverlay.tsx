@@ -32,7 +32,7 @@ export default function BehavioralAnalysisOverlay({
     emotion: 'neutral' as const,
     pace: 'normal' as const,
   });
-  const analysisIntervalRef = useRef<NodeJS.Timeout>();
+  const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const voiceAnalysisRef = useRef<{
     lastVolume: number;
     silenceDuration: number;
