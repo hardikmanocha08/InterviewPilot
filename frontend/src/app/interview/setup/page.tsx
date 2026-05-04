@@ -15,6 +15,8 @@ export default function InterviewSetup() {
         industryMode: user?.industryMode || 'Product company',
         questionCount: user?.settings?.preferredQuestionCount || 3,
         interviewMode: 'timed',
+        enableBehavioralAnalysis: false,
+        peerMode: false,
     });
     const [loading, setLoading] = useState(false);
     const router = useRouter();
@@ -170,6 +172,36 @@ export default function InterviewSetup() {
                             <option value="timed">Timed (auto-skip + auto-submit)</option>
                             <option value="untimed">Untimed (self-paced)</option>
                         </select>
+                    </div>
+
+                    <div className="pt-2 border-t border-border space-y-3">
+                        <div className="flex items-center space-x-3">
+                            <input
+                                type="checkbox"
+                                id="peerMode"
+                                checked={formData.peerMode}
+                                onChange={(e) => setFormData({ ...formData, peerMode: e.target.checked })}
+                                className="w-4 h-4 rounded border-border bg-background cursor-pointer accent-primary"
+                            />
+                            <label htmlFor="peerMode" className="text-xs sm:text-sm font-medium text-white cursor-pointer flex-1">
+                                🤝 Peer Mock Interview
+                            </label>
+                        </div>
+                        <p className="text-xs text-text-muted ml-7">Interview with another candidate. One acts as interviewer, one as candidate.</p>
+
+                        <div className="flex items-center space-x-3 pt-2">
+                            <input
+                                type="checkbox"
+                                id="behavioralAnalysis"
+                                checked={formData.enableBehavioralAnalysis}
+                                onChange={(e) => setFormData({ ...formData, enableBehavioralAnalysis: e.target.checked })}
+                                className="w-4 h-4 rounded border-border bg-background cursor-pointer accent-primary"
+                            />
+                            <label htmlFor="behavioralAnalysis" className="text-xs sm:text-sm font-medium text-white cursor-pointer flex-1">
+                                📹 Enable Behavioral Analysis
+                            </label>
+                        </div>
+                        <p className="text-xs text-text-muted ml-7">Real-time analysis of eye contact, confidence, and communication (webcam required).</p>
                     </div>
 
                     <div>

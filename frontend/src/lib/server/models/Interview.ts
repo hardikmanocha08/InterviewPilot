@@ -1,5 +1,14 @@
 import mongoose, { Document, Model } from 'mongoose';
 
+export interface IBehavioralMetrics {
+  timestamp: Date;
+  eyeContact: number; // 0-100
+  confidence: number; // 0-100
+  speakingPace: 'slow' | 'normal' | 'fast';
+  emotionState: 'neutral' | 'positive' | 'nervous' | 'stressed';
+  frameDuration?: number;
+}
+
 export interface IQuestion {
   _id?: mongoose.Types.ObjectId;
   questionText: string;
@@ -13,10 +22,12 @@ export interface IQuestion {
 
 export interface IInterview extends Document {
   user: mongoose.Types.ObjectId;
+  peerSessionId?: mongoose.Types.ObjectId;
+  isAIPeerSession?: boolean;
   role: string;
   experienceLevel: string;
   industryMode: 'Product company' | 'Service company' | 'Startup' | 'MNC';
-  interviewMode: 'timed' | 'untimed';
+  interviewMode: 'timed' | 'untimed' | 'peer';
   perQuestionTimeSeconds: number;
   score: number;
   status: 'in-progress' | 'completed';
@@ -28,6 +39,14 @@ export interface IInterview extends Document {
     weaknesses: string[];
     improvementPlan: string;
   };
+  behavioralAnalysis?: {
+    isEnabled: boolean;
+    metrics: IBehavioralMetrics[];
+    averageEyeContact: number;
+    averageConfidence: number;
+    overallEmotionTrend: string;
+    communicationFeedback: string;
+  };
 }
 
 const interviewSchema = new mongoose.Schema<IInterview>(
@@ -36,6 +55,14 @@ const interviewSchema = new mongoose.Schema<IInterview>(
       type: mongoose.Schema.Types.ObjectId,
       required: true,
       ref: 'User',
+    },
+    peerSessionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'PeerSession',
+    },
+    isAIPeerSession: {
+      type: Boolean,
+      default: false,
     },
     role: {
       type: String,
@@ -52,7 +79,7 @@ const interviewSchema = new mongoose.Schema<IInterview>(
     },
     interviewMode: {
       type: String,
-      enum: ['timed', 'untimed'],
+      enum: ['timed', 'untimed', 'peer'],
       default: 'timed',
     },
     perQuestionTimeSeconds: {
@@ -90,6 +117,26 @@ const interviewSchema = new mongoose.Schema<IInterview>(
       strengths: [String],
       weaknesses: [String],
       improvementPlan: String,
+    },
+    behavioralAnalysis: {
+      isEnabled: {
+        type: Boolean,
+        default: false,
+      },
+      metrics: [
+        {
+          timestamp: Date,
+          eyeContact: Number,
+          confidence: Number,
+          speakingPace: String,
+          emotionState: String,
+          frameDuration: Number,
+        },
+      ],
+      averageEyeContact: Number,
+      averageConfidence: Number,
+      overallEmotionTrend: String,
+      communicationFeedback: String,
     },
   },
   {

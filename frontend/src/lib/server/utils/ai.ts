@@ -179,3 +179,84 @@ export const transcribeAudio = async (audioFile: File) => {
     throw new Error('Failed to transcribe audio. Check STT provider configuration.');
   }
 };
+
+export const analyzeBehavioralMetrics = async (
+  metrics: Array<{
+    timestamp: Date;
+    eyeContact: number;
+    confidence: number;
+    speakingPace: 'slow' | 'normal' | 'fast';
+    emotionState: 'neutral' | 'positive' | 'nervous' | 'stressed';
+  }>
+) => {
+  if (!metrics || metrics.length === 0) {
+    return {
+      averageEyeContact: 0,
+      averageConfidence: 0,
+      overallEmotionTrend: 'neutral',
+      communicationFeedback: 'No behavioral data available',
+    };
+  }
+
+  const avgEyeContact = Math.round(metrics.reduce((sum, m) => sum + m.eyeContact, 0) / metrics.length);
+  const avgConfidence = Math.round(metrics.reduce((sum, m) => sum + m.confidence, 0) / metrics.length);
+  
+  const emotionCounts = {
+    neutral: 0,
+    positive: 0,
+    nervous: 0,
+    stressed: 0,
+  };
+  metrics.forEach(m => {
+    emotionCounts[m.emotionState as keyof typeof emotionCounts]++;
+  });
+  const dominantEmotion = Object.entries(emotionCounts).sort(([,a], [,b]) => b - a)[0][0];
+
+  const prompt = `Analyze these behavioral metrics from a mock interview and provide constructive feedback:
+  - Average Eye Contact: ${avgEyeContact}% (100% is perfect)
+  - Average Confidence: ${avgConfidence}% (100% is high)
+  - Dominant Emotion: ${dominantEmotion}
+  - Speaking Pace Distribution: ${metrics.filter(m => m.speakingPace === 'slow').length} slow, ${metrics.filter(m => m.speakingPace === 'normal').length} normal, ${metrics.filter(m => m.speakingPace === 'fast').length} fast
+  
+  Provide concise, actionable feedback (2-3 sentences) on communication and non-verbal cues for an interview setting.`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: nimModel,
+      temperature: 0.3,
+      messages: [
+        { role: 'system', content: 'You are an expert communication coach providing feedback on interview communication skills.' },
+        { role: 'user', content: prompt },
+      ],
+    });
+
+    const feedback = completion.choices[0].message?.content ?? 'Please maintain steady eye contact and speak at a measured pace.';
+
+    return {
+      averageEyeContact: avgEyeContact,
+      averageConfidence: avgConfidence,
+      overallEmotionTrend: dominantEmotion,
+      communicationFeedback: feedback,
+    };
+  } catch (error) {
+    console.error('Behavioral analysis error:', error);
+    return {
+      averageEyeContact: avgEyeContact,
+      averageConfidence: avgConfidence,
+      overallEmotionTrend: dominantEmotion,
+      communicationFeedback: 'Behavioral analysis temporary unavailable. Review your eye contact and speaking pace.',
+    };
+  }
+};
+
+export const generatePeerInterviewerPrompt = async (role: string, experienceLevel: string) => {
+  const prompt = `You are an experienced technical interviewer conducting a mock interview for a ${role} position with a ${experienceLevel} candidate. Your role is to:
+1. Ask relevant technical and behavioral questions
+2. Ask follow-up questions based on answers
+3. Evaluate responses and provide professional feedback
+4. Create a realistic interview experience
+
+Start by introducing yourself briefly and asking an opening question. Be conversational and encouraging.`;
+
+  return prompt;
+};
