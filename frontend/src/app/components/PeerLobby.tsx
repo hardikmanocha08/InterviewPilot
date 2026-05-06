@@ -29,7 +29,7 @@ interface PeerLobbyProps {
 }
 
 
-export default function PeerLobby({ onJoinSession, interviewId, role, experienceLevel, peerRole }: PeerLobbyProps) {
+export default function PeerLobby({ onJoinSession, interviewId, role, experienceLevel, peerRole, visibility }: PeerLobbyProps) {
   const [sessions, setSessions] = useState<PeerSession[]>([]);
   const [ownSession, setOwnSession] = useState<PeerSession | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,6 +64,28 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
     const interval = setInterval(fetchPeerSessions, 10000); // Refresh every 10 seconds
     return () => clearInterval(interval);
   }, [onJoinSession, peerRole]);
+
+  const [privateJoinCode, setPrivateJoinCode] = useState('');
+
+  // If the user already has a private session, ensure we have a join code displayed.
+  useEffect(() => {
+    const canGenerate =
+      peerRole === 'interviewee' &&
+      ownSession?.visibility === 'private' &&
+      (ownSession.status === 'waiting' || ownSession.status === 'active') &&
+      !privateJoinCode;
+
+    if (!canGenerate) return;
+
+    void (async () => {
+      try {
+        const codeRes = await api.post('/peer-sessions/generate-join-code', { length: 8 });
+        setPrivateJoinCode(codeRes.data.joinCode || '');
+      } catch (e) {
+        console.error('Failed to generate join code:', e);
+      }
+    })();
+  }, [peerRole, ownSession, privateJoinCode]);
 
   const handleCreateSession = async () => {
     try {
@@ -106,8 +128,6 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
       setRefreshing(false);
     }
   };
-
-  const [privateJoinCode, setPrivateJoinCode] = useState('');
 
   const handleJoinByCode = async () => {
     const code = privateJoinCode.trim();
@@ -181,6 +201,43 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
               </div>
             </div>
           )}
+        </motion.div>
+      )}
+
+      {/* Interviewer: private room join-by-code UI */}
+      {peerRole === 'interviewer' && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-4 p-4 bg-surface border border-border rounded-lg"
+        >
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div>
+              <h3 className="text-white font-semibold text-sm">Join private room</h3>
+              <p className="text-text-muted text-xs mt-1">
+                {visibility === 'private'
+                  ? 'Enter the code shared by the interviewee.'
+                  : 'If the interviewee shared a private code, enter it here.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              value={privateJoinCode}
+              onChange={(e) => setPrivateJoinCode(e.target.value)}
+              placeholder="Enter join code"
+              className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-white placeholder:text-text-muted focus:outline-none focus:border-primary"
+              spellCheck={false}
+            />
+            <button
+              onClick={handleJoinByCode}
+              disabled={refreshing}
+              className="bg-primary hover:bg-primary-hover disabled:opacity-50 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center"
+            >
+              {refreshing ? 'Joining...' : 'Join with code'}
+            </button>
+          </div>
         </motion.div>
       )}
 
