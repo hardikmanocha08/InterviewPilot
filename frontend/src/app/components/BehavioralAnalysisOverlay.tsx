@@ -65,6 +65,9 @@ export default function BehavioralAnalysisOverlay({
 
     violationReportedRef.current = true;
     setCameraHealth((current) => ({ ...current, status: reason }));
+
+    // Call parent and ensure we stop recording immediately.
+    // Also stop the interval loop by flipping the violation flag.
     onViolationRef.current?.(reason);
   }, []);
 
@@ -223,7 +226,8 @@ export default function BehavioralAnalysisOverlay({
         emotion,
         pace,
       });
-    }, 1000); // Proctor continuously while recording.
+    }, 200); // Proctor continuously while recording (faster detection for black/no-face).
+
 
     return () => {
       if (analysisIntervalRef.current) {
