@@ -47,10 +47,9 @@ export default function BehavioralAnalysisOverlay({
     status: 'Starting camera',
   });
   const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const voiceAnalysisRef = useRef<{
-    lastVolume: number;
-    silenceDuration: number;
-  }>({ lastVolume: 0, silenceDuration: 0 });
+  const blackFrameCountRef = useRef(0);
+  const noFaceFrameCountRef = useRef(0);
+  const faceDetectorRef = useRef<any>(null);
   const violationReportedRef = useRef(false);
   const onViolationRef = useRef(onViolation);
 
@@ -111,6 +110,8 @@ export default function BehavioralAnalysisOverlay({
 
   useEffect(() => {
     if (!isRecording || !hasPermission) return;
+    const BLACK_FRAME_THRESHOLD = 4;
+    const NO_FACE_FRAME_THRESHOLD = 6;
 
     // Simulated behavioral analysis (in production, use ML model like TensorFlow.js)
     analysisIntervalRef.current = setInterval(async () => {
@@ -151,49 +152,45 @@ export default function BehavioralAnalysisOverlay({
             status: 'Camera active',
           });
 
-          // If the camera feed goes effectively black (or stays near-black for a bit), end the interview.
-          // We use a variance+brightness combo to detect “covered lens / blank frames” too.
-          const isNearBlack = averageBrightness < 55;
-          const isLowVariance = variance < 12;
-          const isBlockedOrOverexposed = averageBrightness > 245 || isLowVariance;
-
-          if (isNearBlack || isBlockedOrOverexposed) {
-            // Require 2 consecutive “bad” frames to reduce false positives.
-            const state = voiceAnalysisRef.current;
-            // Reuse silenceDuration as a lightweight consecutive-frame counter.
-            // (We keep it separate from actual voice analysis; this overlay currently simulates metrics.)
-            if (!state.silenceDuration) {
-              state.silenceDuration = 1;
-            } else {
-              state.silenceDuration += 1;
-            }
-
-            if (state.silenceDuration >= 2) {
-              const reason = isNearBlack
-                ? 'Camera went black (no video / lens covered) during the interview.'
-                : 'Camera view appears blocked/blank during the interview.';
-              reportViolation(reason);
-              state.silenceDuration = 0;
-              return;
-            }
+          const isNearBlack = averageBrightness < 35;
+          const isFlatFrame = variance < 10;
+          if (isNearBlack || isFlatFrame) {
+            blackFrameCountRef.current += 1;
           } else {
-            // Reset counter when frames look healthy.
-            voiceAnalysisRef.current.silenceDuration = 0;
+            blackFrameCountRef.current = 0;
           }
 
+          if (blackFrameCountRef.current >= BLACK_FRAME_THRESHOLD) {
+            reportViolation('Camera turned black or appears blocked during the interview.');
+            blackFrameCountRef.current = 0;
+            return;
+          }
 
           const FaceDetectorCtor = (window as any).FaceDetector;
-          if (FaceDetectorCtor) {
-            try {
-              const detector = new FaceDetectorCtor({ fastMode: true, maxDetectedFaces: 1 });
-              const faces = await detector.detect(canvas);
-              if (!faces.length) {
-                reportViolation('No face detected in camera.');
-                return;
-              }
-            } catch {
-              // Basic frame checks above still catch blocked, blank, and odd camera states.
+          if (!FaceDetectorCtor) {
+            reportViolation('Face detection is not supported in this browser. Please use a supported browser for proctored interviews.');
+            return;
+          }
+
+          if (!faceDetectorRef.current) {
+            faceDetectorRef.current = new FaceDetectorCtor({ fastMode: true, maxDetectedFaces: 1 });
+          }
+
+          try {
+            const faces = await faceDetectorRef.current.detect(canvas);
+            if (!faces.length) {
+              noFaceFrameCountRef.current += 1;
+            } else {
+              noFaceFrameCountRef.current = 0;
             }
+          } catch {
+            noFaceFrameCountRef.current += 1;
+          }
+
+          if (noFaceFrameCountRef.current >= NO_FACE_FRAME_THRESHOLD) {
+            reportViolation('No human face detected in camera during the interview.');
+            noFaceFrameCountRef.current = 0;
+            return;
           }
         }
       }
@@ -233,6 +230,8 @@ export default function BehavioralAnalysisOverlay({
       if (analysisIntervalRef.current) {
         clearInterval(analysisIntervalRef.current);
       }
+      blackFrameCountRef.current = 0;
+      noFaceFrameCountRef.current = 0;
     };
   }, [isRecording, hasPermission, onMetricsUpdate, reportViolation]);
 
