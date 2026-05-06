@@ -6,7 +6,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
 import PeerInterviewRoom from '@/app/components/PeerInterviewRoom';
 import PeerLobby from '@/app/components/PeerLobby';
-import { FiSend, FiCheckCircle, FiChevronRight, FiAlertCircle, FiBarChart2, FiThumbsUp, FiTrendingDown, FiXCircle, FiMic, FiMicOff } from 'react-icons/fi';
+import CodeEditor from '@/app/components/CodeEditor';
+import { useTTS } from '@/app/hooks/useTTS';
+import { FiSend, FiCheckCircle, FiChevronRight, FiAlertCircle, FiBarChart2, FiThumbsUp, FiTrendingDown, FiXCircle, FiMic, FiMicOff, FiVolume2, FiVolumeX, FiCode, FiMessageSquare } from 'react-icons/fi';
 
 type EndReason = 'manual' | 'timeout' | 'abandoned';
 
@@ -32,6 +34,13 @@ export default function InterviewRoom() {
     const [peerRole, setPeerRole] = useState<'interviewer' | 'interviewee' | null>(null);
     const [recordingAnswer, setRecordingAnswer] = useState(false);
     const [transcribingAnswer, setTranscribingAnswer] = useState(false);
+    const [voiceMode, setVoiceMode] = useState(false);
+    const [codeMode, setCodeMode] = useState(false);
+    const [codeText, setCodeText] = useState('');
+    const [codeLanguage, setCodeLanguage] = useState('javascript');
+    const [codeOutput, setCodeOutput] = useState('');
+    const [codeRunning, setCodeRunning] = useState(false);
+    const { speak, stop: stopSpeaking, speaking } = useTTS();
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const hasFinalizedRef = useRef(false);
@@ -85,6 +94,12 @@ export default function InterviewRoom() {
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [interview?.questions, evaluating]);
+
+    useEffect(() => {
+        if (voiceMode && currentQ?.questionText && !speaking) {
+            speak(currentQ.questionText);
+        }
+    }, [currentQuestionIndex, voiceMode]);
 
     useEffect(() => {
         if (!interview || interview.interviewMode !== 'timed') {
@@ -371,6 +386,19 @@ export default function InterviewRoom() {
         void handleFinishInterview('manual');
     }, [handleFinishInterview]);
 
+    const handleRunCode = async (code: string, language: string) => {
+        setCodeRunning(true);
+        setCodeOutput('');
+        try {
+            const res = await api.post('/code/execute', { code, language });
+            setCodeOutput(res.data.output || res.data.error || 'No output');
+        } catch (err: any) {
+            setCodeOutput(err.response?.data?.error || err.response?.data?.message || 'Execution failed');
+        } finally {
+            setCodeRunning(false);
+        }
+    };
+
     const startAnswerRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
@@ -610,6 +638,15 @@ export default function InterviewRoom() {
                         <div className="flex items-center space-x-1.5 md:space-x-2">
                             <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white text-[10px] md:text-xs font-bold">AI</div>
                             <span className="text-xs md:text-sm font-medium text-text-muted">Interviewer</span>
+                            {voiceMode && (
+                                <button
+                                    onClick={() => speaking ? stopSpeaking() : speak(currentQ.questionText)}
+                                    className="ml-2 p-1 rounded-full bg-primary/20 hover:bg-primary/30 text-primary transition-colors"
+                                    title={speaking ? 'Stop speaking' : 'Read question aloud'}
+                                >
+                                    {speaking ? <FiVolumeX className="w-3.5 h-3.5" /> : <FiVolume2 className="w-3.5 h-3.5" />}
+                                </button>
+                            )}
                         </div>
                         <div className="bg-surface border border-border p-3 md:p-5 rounded-lg md:rounded-2xl rounded-tl-sm text-white text-sm md:text-lg leading-relaxed">
                             {currentQ.questionText}
@@ -698,33 +735,129 @@ export default function InterviewRoom() {
                 {/* Input Area */}
                 <div className="p-3 sm:p-4 md:p-6 border-t border-border bg-surface/50 backdrop-blur-md flex-shrink-0">
                     {!isAnswered ? (
-                        <div className="relative flex flex-col items-end">
-                            <textarea
-                                value={answerInput}
-                                onChange={(e) => setAnswerInput(e.target.value)}
-                                placeholder="Type your answer here..."
-                                disabled={evaluating || finishing}
-                                className="w-full bg-background border border-border rounded-xl px-4 py-4 pr-16 text-white focus:outline-none focus:border-primary resize-none min-h-[100px] sm:min-h-[110px] md:min-h-[120px] max-h-[200px] transition-colors"
-                            />
-
-                            <div className="absolute bottom-4 right-4 flex space-x-2">
+                        <div className="space-y-3">
+                            {/* Mode toggles */}
+                            <div className="flex items-center gap-2">
                                 <button
-                                    onClick={recordingAnswer ? stopAnswerRecording : startAnswerRecording}
-                                    disabled={evaluating || finishing || transcribingAnswer}
-                                    className={`p-3 disabled:bg-border disabled:text-text-muted text-white rounded-lg transition-colors ${recordingAnswer ? 'bg-red-500 hover:bg-red-600' : 'bg-surface border border-border hover:border-primary'}`}
-                                    title={recordingAnswer ? 'Stop recording' : 'Record answer'}
+                                    onClick={() => setVoiceMode(!voiceMode)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                                        voiceMode
+                                            ? 'bg-primary/20 text-primary border border-primary/30'
+                                            : 'bg-background text-text-muted border border-border hover:border-primary/50'
+                                    }`}
                                 >
-                                    {recordingAnswer ? <FiMicOff className="w-5 h-5" /> : <FiMic className="w-5 h-5" />}
+                                    {voiceMode ? <FiVolume2 className="w-3.5 h-3.5" /> : <FiVolumeX className="w-3.5 h-3.5" />}
+                                    Voice
                                 </button>
                                 <button
-                                    onClick={handleAnswerSubmit}
-                                    disabled={evaluating || finishing || !answerInput.trim()}
-                                    className="p-3 bg-primary hover:bg-primary-hover disabled:bg-border disabled:text-text-muted text-white rounded-lg transition-colors"
-                                    title="Submit Answer"
+                                    onClick={() => setCodeMode(!codeMode)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                                        codeMode
+                                            ? 'bg-primary/20 text-primary border border-primary/30'
+                                            : 'bg-background text-text-muted border border-border hover:border-primary/50'
+                                    }`}
                                 >
-                                    <FiSend className="w-5 h-5" />
+                                    <FiCode className="w-3.5 h-3.5" />
+                                    Code
+                                </button>
+                                <button
+                                    onClick={() => { setCodeMode(false); setVoiceMode(false); }}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                                        !codeMode && !voiceMode
+                                            ? 'bg-primary/20 text-primary border border-primary/30'
+                                            : 'bg-background text-text-muted border border-border hover:border-primary/50'
+                                    }`}
+                                >
+                                    <FiMessageSquare className="w-3.5 h-3.5" />
+                                    Text
                                 </button>
                             </div>
+
+                            {/* Text answer mode */}
+                            {!codeMode && !voiceMode && (
+                                <div className="relative flex flex-col items-end">
+                                    <textarea
+                                        value={answerInput}
+                                        onChange={(e) => setAnswerInput(e.target.value)}
+                                        placeholder="Type your answer here..."
+                                        disabled={evaluating || finishing}
+                                        className="w-full bg-background border border-border rounded-xl px-4 py-4 pr-16 text-white focus:outline-none focus:border-primary resize-none min-h-[100px] sm:min-h-[110px] md:min-h-[120px] max-h-[200px] transition-colors"
+                                    />
+                                    <div className="absolute bottom-4 right-4 flex space-x-2">
+                                        <button
+                                            onClick={handleAnswerSubmit}
+                                            disabled={evaluating || finishing || !answerInput.trim()}
+                                            className="p-3 bg-primary hover:bg-primary-hover disabled:bg-border disabled:text-text-muted text-white rounded-lg transition-colors"
+                                            title="Submit Answer"
+                                        >
+                                            <FiSend className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Voice answer mode */}
+                            {voiceMode && !codeMode && (
+                                <div className="relative flex flex-col items-center py-6">
+                                    <div className="text-sm text-text-muted mb-4">Speak your answer</div>
+                                    <button
+                                        onClick={recordingAnswer ? stopAnswerRecording : startAnswerRecording}
+                                        disabled={evaluating || finishing || transcribingAnswer}
+                                        className={`w-16 h-16 rounded-full flex items-center justify-center transition-all ${
+                                            recordingAnswer
+                                                ? 'bg-red-500 animate-pulse scale-110'
+                                                : 'bg-primary hover:bg-primary-hover'
+                                        } disabled:opacity-50 disabled:scale-100`}
+                                    >
+                                        {recordingAnswer ? (
+                                            <FiMicOff className="w-7 h-7 text-white" />
+                                        ) : transcribingAnswer ? (
+                                            <div className="w-7 h-7 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                            <FiMic className="w-7 h-7 text-white" />
+                                        )}
+                                    </button>
+                                    {recordingAnswer && (
+                                        <div className="mt-4 text-xs text-red-400 animate-pulse">Recording... Click to stop</div>
+                                    )}
+                                    {transcribingAnswer && (
+                                        <div className="mt-4 text-xs text-text-muted">Transcribing...</div>
+                                    )}
+                                    {answerInput && (
+                                        <div className="mt-4 w-full max-w-lg">
+                                            <div className="text-xs text-text-muted mb-1">Transcribed answer:</div>
+                                            <div className="bg-background border border-border rounded-lg p-3 text-sm text-white max-h-24 overflow-auto">
+                                                {answerInput}
+                                            </div>
+                                            <div className="mt-2 flex justify-end">
+                                                <button
+                                                    onClick={handleAnswerSubmit}
+                                                    disabled={evaluating || finishing}
+                                                    className="px-4 py-2 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white text-sm rounded-lg transition-colors"
+                                                >
+                                                    Submit Answer
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Code answer mode */}
+                            {codeMode && (
+                                <div className="h-[300px] sm:h-[400px] rounded-xl overflow-hidden border border-border">
+                                    <CodeEditor
+                                        value={codeText}
+                                        onChange={setCodeText}
+                                        language={codeLanguage}
+                                        onLanguageChange={setCodeLanguage}
+                                        onRun={handleRunCode}
+                                        running={codeRunning}
+                                        output={codeOutput}
+                                        placeholder="Write your solution here..."
+                                    />
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <div className="flex justify-end space-x-4">

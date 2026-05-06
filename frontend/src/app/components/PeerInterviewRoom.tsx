@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '@/lib/api';
-import { FiMic, FiMicOff, FiPhoneOff, FiRefreshCw, FiSend } from 'react-icons/fi';
+import CodeEditor from '@/app/components/CodeEditor';
+import Whiteboard from '@/app/components/Whiteboard';
+import { FiMic, FiMicOff, FiPhoneOff, FiRefreshCw, FiSend, FiCode, FiLayout } from 'react-icons/fi';
 
 interface PeerInterviewRoomProps {
   sessionId: string;
@@ -15,6 +17,7 @@ interface PeerSessionState {
   currentQuestion?: string;
   currentAnswer?: string;
   codeText?: string;
+  whiteboardElements?: string;
   candidateMicActive?: boolean;
   interviewerMicActive?: boolean;
   candidateMicLevel?: number;
@@ -53,6 +56,10 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [codeText, setCodeText] = useState('');
+  const [whiteboardMode, setWhiteboardMode] = useState(false);
+  const [codeLanguage, setCodeLanguage] = useState('javascript');
+  const [codeOutput, setCodeOutput] = useState('');
+  const [codeRunning, setCodeRunning] = useState(false);
   const [micActive, setMicActive] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>('new');
@@ -101,6 +108,19 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     setSession(res.data.session || {});
     return res.data.session as PeerSessionState;
   }, [sessionId]);
+
+  const handleRunCode = async (code: string, language: string) => {
+    setCodeRunning(true);
+    setCodeOutput('');
+    try {
+      const res = await api.post('/code/execute', { code, language });
+      setCodeOutput(res.data.output || res.data.error || 'No output');
+    } catch (err: any) {
+      setCodeOutput(err.response?.data?.error || err.response?.data?.message || 'Execution failed');
+    } finally {
+      setCodeRunning(false);
+    }
+  };
 
   const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -842,8 +862,19 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
 
         <section className="p-4 sm:p-6 overflow-hidden flex flex-col">
           <div className="flex items-center justify-between mb-2">
-            <label className="text-sm font-semibold text-white">Coding Space</label>
-            {effectiveRole === 'interviewee' && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-semibold text-white">
+                {whiteboardMode ? 'Whiteboard' : 'Coding Space'}
+              </label>
+              <button
+                onClick={() => setWhiteboardMode(!whiteboardMode)}
+                className="p-1.5 rounded bg-surface border border-border hover:border-primary text-text-muted hover:text-white transition-colors"
+                title={whiteboardMode ? 'Switch to code editor' : 'Switch to whiteboard'}
+              >
+                {whiteboardMode ? <FiCode className="w-4 h-4" /> : <FiLayout className="w-4 h-4" />}
+              </button>
+            </div>
+            {!whiteboardMode && effectiveRole === 'interviewee' && (
               <button
                 onClick={saveAnswer}
                 disabled={saving}
@@ -853,14 +884,26 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
               </button>
             )}
           </div>
-          <textarea
-            value={codeText}
-            onChange={(event) => setCodeText(event.target.value)}
-            readOnly={effectiveRole !== 'interviewee'}
-            spellCheck={false}
-            placeholder={effectiveRole === 'interviewee' ? 'Write code here...' : 'The interviewee code appears here.'}
-            className="flex-1 min-h-[360px] bg-black border border-border rounded-lg p-4 text-green-100 font-mono text-sm resize-none focus:outline-none focus:border-primary"
-          />
+
+          {whiteboardMode ? (
+            <div className="flex-1 rounded-lg overflow-hidden border border-border">
+              <Whiteboard />
+            </div>
+          ) : (
+            <div className="flex-1 rounded-lg overflow-hidden border border-border">
+              <CodeEditor
+                value={codeText}
+                onChange={setCodeText}
+                language={codeLanguage}
+                onLanguageChange={setCodeLanguage}
+                readOnly={effectiveRole !== 'interviewee'}
+                onRun={effectiveRole === 'interviewee' ? handleRunCode : undefined}
+                running={codeRunning}
+                output={codeOutput}
+                placeholder={effectiveRole === 'interviewee' ? 'Write code here...' : 'The interviewee code appears here.'}
+              />
+            </div>
+          )}
         </section>
       </div>
     </div>
