@@ -53,6 +53,8 @@ export default function BehavioralAnalysisOverlay({
   const previousFrameSignatureRef = useRef<number | null>(null);
   const previousVideoTimeRef = useRef<number | null>(null);
   const stalledVideoTicksRef = useRef(0);
+  const lastVideoFrameAtRef = useRef<number>(Date.now());
+  const frameCallbackHandleRef = useRef<number | null>(null);
   const faceDetectorRef = useRef<any>(null);
   const violationReportedRef = useRef(false);
   const onViolationRef = useRef(onViolation);
@@ -118,6 +120,25 @@ export default function BehavioralAnalysisOverlay({
     const NO_FACE_FRAME_THRESHOLD = 6;
     const FROZEN_FRAME_THRESHOLD = 15;
     const STALLED_VIDEO_TICKS_THRESHOLD = 8;
+    const FRAME_WATCHDOG_TIMEOUT_MS = 2500;
+
+    const scheduleVideoFrameWatchdog = () => {
+      if (!videoRef.current || violationReportedRef.current) {
+        return;
+      }
+      const videoEl = videoRef.current as HTMLVideoElement & {
+        requestVideoFrameCallback?: (callback: () => void) => number;
+      };
+      if (!videoEl.requestVideoFrameCallback) {
+        return;
+      }
+      frameCallbackHandleRef.current = videoEl.requestVideoFrameCallback(() => {
+        lastVideoFrameAtRef.current = Date.now();
+        scheduleVideoFrameWatchdog();
+      });
+    };
+    lastVideoFrameAtRef.current = Date.now();
+    scheduleVideoFrameWatchdog();
 
     // Simulated behavioral analysis (in production, use ML model like TensorFlow.js)
     analysisIntervalRef.current = setInterval(async () => {
@@ -149,6 +170,11 @@ export default function BehavioralAnalysisOverlay({
         if (stalledVideoTicksRef.current >= STALLED_VIDEO_TICKS_THRESHOLD) {
           reportViolation('Camera feed froze or stopped updating during the interview.');
           stalledVideoTicksRef.current = 0;
+          return;
+        }
+
+        if (Date.now() - lastVideoFrameAtRef.current > FRAME_WATCHDOG_TIMEOUT_MS) {
+          reportViolation('Camera stopped producing live frames during the interview.');
           return;
         }
 
@@ -284,6 +310,7 @@ export default function BehavioralAnalysisOverlay({
       previousFrameSignatureRef.current = null;
       previousVideoTimeRef.current = null;
       stalledVideoTicksRef.current = 0;
+      frameCallbackHandleRef.current = null;
     };
   }, [isRecording, hasPermission, onMetricsUpdate, reportViolation]);
 
