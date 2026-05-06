@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
-import { FiUsers, FiPlus, FiArrowRight, FiLoader, FiAlertCircle } from 'react-icons/fi';
+import { FiUsers, FiPlus, FiArrowRight, FiLoader, FiAlertCircle, FiCopy, FiRefreshCw } from 'react-icons/fi';
 
 interface PeerSession {
   _id: string;
@@ -36,6 +36,17 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Private room join code (entered by interviewee, or generated for interviewer to share)
+  const [joinCodeInput, setJoinCodeInput] = useState('');
+  const [generatedCode, setGeneratedCode] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const matchesVisibility = (session: PeerSession) => {
+    return visibility === 'public'
+      ? session.visibility !== 'private'
+      : session.visibility === 'private';
+  };
+
   const fetchPeerSessions = async () => {
     try {
       const res = await api.get('/peer-sessions?includeMine=true');
@@ -43,12 +54,19 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
       const availableSessions = Array.isArray(data) ? data : data.availableSessions || [];
       const currentOwnSession = Array.isArray(data) ? null : data.ownSession || null;
 
-      setSessions(availableSessions);
-      setOwnSession(currentOwnSession);
+      const filtered = availableSessions.filter((s: PeerSession) => matchesVisibility(s));
+
+      setSessions(filtered);
+
+      if (currentOwnSession) {
+        setOwnSession(matchesVisibility(currentOwnSession) ? currentOwnSession : null);
+      } else {
+        setOwnSession(null);
+      }
+
       setError(null);
 
-      // Auto-join the creator when their session becomes active
-      if (currentOwnSession?.status === 'active') {
+      if (currentOwnSession?.status === 'active' && matchesVisibility(currentOwnSession)) {
         onJoinSession(currentOwnSession._id);
       }
     } catch (err) {
@@ -62,15 +80,14 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
 
   useEffect(() => {
     fetchPeerSessions();
-    const interval = setInterval(fetchPeerSessions, 10000); // Refresh every 10 seconds
+    const interval = setInterval(fetchPeerSessions, 10000);
     return () => clearInterval(interval);
-  }, [onJoinSession, peerRole]);
-
-  const [privateJoinCode, setPrivateJoinCode] = useState('');
+  }, [onJoinSession, peerRole, visibility]);
 
   const handleCreateSession = async () => {
     try {
       setRefreshing(true);
+      setError(null);
       const res = await api.post('/peer-sessions', {
         interviewId,
         role,
@@ -78,12 +95,15 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
         visibility,
         peerRole,
       });
-      setOwnSession(res.data.session || res.data);
-      setError(null);
+      const session = res.data.session || res.data;
+      setOwnSession(session);
 
-      if (res.data.joinCode) {
-        setPrivateJoinCode(res.data.joinCode);
+      // If this is a private room created by the interviewer, capture the generated code
+      if (visibility === 'private' && peerRole === 'interviewer' && res.data.joinCode) {
+        setGeneratedCode(res.data.joinCode);
       }
+
+      setError(null);
     } catch (err) {
       console.error('Failed to create peer session:', err);
       setError('Failed to create a peer session');
@@ -93,7 +113,6 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
   };
 
   const handleJoinSession = async (sessionId: string) => {
-
     try {
       setRefreshing(true);
       await api.post(`/peer-sessions/${sessionId}/join`, { interviewId });
@@ -109,7 +128,7 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
   };
 
   const handleJoinByCode = async () => {
-    const code = privateJoinCode.trim();
+    const code = joinCodeInput.trim();
     if (!code) {
       setError('Enter a join code');
       return;
@@ -124,7 +143,6 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
         joinCode: code,
       });
 
-      // Private join-by-code route returns { session, peerRole }
       const sessionId = res.data?.session?._id;
       if (!sessionId) {
         throw new Error('Missing session id from server');
@@ -139,6 +157,17 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
     }
   };
 
+  const copyCode = () => {
+    navigator.clipboard.writeText(generatedCode).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const isInterviewerCreating = visibility === 'private' && peerRole === 'interviewer';
+  const isIntervieweeCreating = visibility === 'public' && peerRole === 'interviewee';
+  const canCreate = isInterviewerCreating || isIntervieweeCreating;
+
   return (
     <div className="w-full max-w-2xl mx-auto">
       <div className="mb-6">
@@ -149,9 +178,9 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
           </h2>
         </div>
         <p className="text-text-muted">
-          {visibility === 'private' 
-            ? (peerRole === 'interviewer' ? 'Create a private room and share the code.' : 'Enter the private code to join the interviewer.')
-            : (peerRole === 'interviewee' ? 'Create a public room and wait.' : 'Find a candidate to interview.')}
+          {visibility === 'private'
+            ? (peerRole === 'interviewer' ? 'Create a private room and share the code with the interviewee.' : 'Enter the code shared by your interviewer to join.')
+            : (peerRole === 'interviewee' ? 'Create a public room and wait for an interviewer.' : 'Find a candidate to interview.')}
         </p>
       </div>
 
@@ -166,26 +195,44 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
         </motion.div>
       )}
 
-      {ownSession?.status === 'waiting' && (
+      {/* Interviewer: show generated join code after creating private room */}
+      {ownSession?.status === 'waiting' && ownSession.visibility === 'private' && peerRole === 'interviewer' && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-4 p-4 bg-primary/10 border border-primary/20 rounded-lg"
+        >
+          <div className="text-primary text-sm font-medium mb-3">Your private room is ready. Share this code:</div>
+          <div className="flex items-center gap-3">
+            <div className="font-mono text-xl sm:text-2xl text-white bg-background border border-primary/30 rounded-lg px-4 py-2 tracking-widest flex-1 text-center">
+              {generatedCode || 'Generating...'}
+            </div>
+            {generatedCode && (
+              <button
+                onClick={copyCode}
+                className="p-2.5 bg-primary/20 hover:bg-primary/30 border border-primary/30 rounded-lg transition-colors"
+                title="Copy code"
+              >
+                {copied ? <FiRefreshCw className="w-4 h-4 text-primary" /> : <FiCopy className="w-4 h-4 text-primary" />}
+              </button>
+            )}
+          </div>
+          <div className="text-xs text-text-muted mt-2">Waiting for the interviewee to join...</div>
+        </motion.div>
+      )}
+
+      {/* Interviewee: public room waiting state */}
+      {ownSession?.status === 'waiting' && peerRole === 'interviewee' && visibility === 'public' && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-4 p-4 bg-primary/10 border border-primary/20 rounded-lg text-primary text-sm"
         >
-          Your session is live. Waiting for the other participant to join...
-
-          {ownSession.visibility === 'private' && peerRole === 'interviewer' && (
-            <div className="mt-3">
-              <div className="text-xs text-text-muted">Share this code with the interviewee:</div>
-              <div className="mt-1 font-mono text-sm sm:text-base text-white bg-background border border-border rounded-lg px-3 py-2 inline-block">
-                {privateJoinCode || 'Generating...'}
-              </div>
-            </div>
-          )}
+          Your room is live. Waiting for an interviewer to join...
         </motion.div>
       )}
 
-      {/* Interviewee: private room join-by-code UI */}
+      {/* Interviewee: private room join-by-code input */}
       {peerRole === 'interviewee' && visibility === 'private' && !ownSession && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
@@ -201,25 +248,26 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
 
           <div className="flex items-center gap-2">
             <input
-              value={privateJoinCode}
-              onChange={(e) => setPrivateJoinCode(e.target.value)}
+              value={joinCodeInput}
+              onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
               placeholder="Enter join code"
-              className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-white placeholder:text-text-muted focus:outline-none focus:border-primary"
+              maxLength={8}
+              className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-white font-mono text-lg tracking-widest uppercase placeholder:text-text-muted placeholder:text-sm placeholder:tracking-normal placeholder:font-normal focus:outline-none focus:border-primary"
               spellCheck={false}
             />
             <button
               onClick={handleJoinByCode}
-              disabled={refreshing}
+              disabled={refreshing || !joinCodeInput.trim()}
               className="bg-primary hover:bg-primary-hover disabled:opacity-50 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center"
             >
-              {refreshing ? 'Joining...' : 'Join with code'}
+              {refreshing ? 'Joining...' : 'Join'}
             </button>
           </div>
         </motion.div>
       )}
 
-      {/* Show Create button based on visibility/role logic */}
-      {!ownSession && !loading && (
+      {/* Create room button */}
+      {canCreate && !ownSession && !loading && (
         <button
           onClick={handleCreateSession}
           disabled={refreshing}
@@ -230,6 +278,7 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
         </button>
       )}
 
+      {/* Session list / waiting states */}
       {loading ? (
         <div className="flex flex-col items-center justify-center py-12">
           <FiLoader className="w-8 h-8 text-primary animate-spin mb-4" />
@@ -244,7 +293,7 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
           >
             <FiUsers className="w-12 h-12 text-text-muted mx-auto mb-4 opacity-50" />
             <p className="text-text-muted mb-4">No peers currently waiting for interviews</p>
-            <p className="text-sm text-text-muted">Create a private room or refresh in a moment.</p>
+            <p className="text-sm text-text-muted">Refresh to check for new candidates.</p>
           </motion.div>
         ) : (
           <motion.div className="space-y-3">
@@ -263,7 +312,7 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
                       <div className="flex items-center space-x-3 text-sm text-text-muted">
                         <span>Experience: {session.experienceLevel}</span>
                         <span>•</span>
-                        <span>Waiting {Math.floor((Date.now() - new Date(session.createdAt).getTime()) / 60000)}m</span>
+                        <span>Waiting {Math.max(0, Math.floor((Date.now() - new Date(session.createdAt).getTime()) / 60000))}m</span>
                       </div>
                     </div>
                     <button
@@ -280,19 +329,25 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
             </AnimatePresence>
           </motion.div>
         )
-      ) : peerRole === 'interviewee' ? (
+      ) : peerRole === 'interviewee' && visibility === 'private' ? (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="py-12 text-center border border-dashed border-border rounded-lg"
         >
           <FiUsers className="w-12 h-12 text-text-muted mx-auto mb-4 opacity-50" />
-          <p className="text-text-muted mb-2">
-            {visibility === 'private' ? 'Enter the code shared by your interviewer' : 'Waiting for an interviewer'}
-          </p>
-          <p className="text-sm text-text-muted">
-            {visibility === 'private' ? 'Use the join code input above to connect.' : 'Keep this page open. You will enter the room automatically when someone joins.'}
-          </p>
+          <p className="text-text-muted mb-2">Enter the code shared by your interviewer</p>
+          <p className="text-sm text-text-muted">Use the join code input above to connect.</p>
+        </motion.div>
+      ) : peerRole === 'interviewee' && visibility === 'public' && !ownSession ? (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="py-12 text-center border border-dashed border-border rounded-lg"
+        >
+          <FiUsers className="w-12 h-12 text-text-muted mx-auto mb-4 opacity-50" />
+          <p className="text-text-muted mb-2">Create a public room to get started</p>
+          <p className="text-sm text-text-muted">Click the "Create public room" button above, then wait for an interviewer.</p>
         </motion.div>
       ) : (
         <motion.div
