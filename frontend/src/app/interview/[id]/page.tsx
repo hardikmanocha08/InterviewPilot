@@ -153,6 +153,36 @@ export default function InterviewRoom() {
         };
     }, [interview, isProctoredInterview]);
 
+    const finalizeProctorViolation = useCallback((reason: string) => {
+        if (!id || proctorViolationRef.current || hasFinalizedRef.current) {
+            return;
+        }
+
+        proctorViolationRef.current = true;
+        hasFinalizedRef.current = true;
+        setFinishing(true);
+        alert(`Interview stopped: ${reason}`);
+
+        finishWithBeacon('abandoned');
+        // Do not block UX on a potentially hanging request.
+        void Promise.race([
+            api.post(`/interviews/${id}/finish`, { endedReason: 'abandoned' }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('finish request timeout')), 2500)),
+        ]).catch((error) => {
+            console.error('Failed to finish after proctor violation:', error);
+            finishWithBeacon('abandoned');
+        });
+
+        setTimeout(() => finishWithBeacon('abandoned'), 300);
+        const historyPath = `/dashboard/history/${id}`;
+        router.replace(historyPath);
+        setTimeout(() => {
+            if (window.location.pathname.includes(`/interview/${id}`)) {
+                window.location.replace(historyPath);
+            }
+        }, 200);
+    }, [id, router]);
+
     useEffect(() => {
         if (!interview || interview.status === 'completed' || !isProctoredInterview) {
             return;
@@ -252,22 +282,22 @@ export default function InterviewRoom() {
         }
     };
 
-    const buildFinishUrl = (reason: EndReason) => {
+    function buildFinishUrl(reason: EndReason) {
         const baseURL = typeof api.defaults.baseURL === 'string' ? api.defaults.baseURL : '/api';
         const apiBase = baseURL.startsWith('http')
             ? baseURL
             : `${window.location.origin}${baseURL.startsWith('/') ? baseURL : `/${baseURL}`}`;
         return `${apiBase}/interviews/${id}/finish?endedReason=${reason}`;
-    };
+    }
 
-    const finishWithBeacon = (reason: EndReason) => {
+    function finishWithBeacon(reason: EndReason) {
         const url = buildFinishUrl(reason);
         if (navigator.sendBeacon) {
             navigator.sendBeacon(url);
             return;
         }
         fetch(url, { method: 'POST', keepalive: true, credentials: 'include' }).catch(() => undefined);
-    };
+    }
 
     const handleFinishInterview = async (reason: EndReason = 'manual') => {
         if (hasFinalizedRef.current) {
@@ -331,36 +361,6 @@ export default function InterviewRoom() {
     const handlePeerSessionReady = useCallback((sessionId: string) => {
         setInterview((current: any) => current ? { ...current, peerSessionId: sessionId } : current);
     }, []);
-
-    const finalizeProctorViolation = useCallback((reason: string) => {
-        if (!id || proctorViolationRef.current || hasFinalizedRef.current) {
-            return;
-        }
-
-        proctorViolationRef.current = true;
-        hasFinalizedRef.current = true;
-        setFinishing(true);
-        alert(`Interview stopped: ${reason}`);
-
-        finishWithBeacon('abandoned');
-        // Do not block UX on a potentially hanging request.
-        void Promise.race([
-            api.post(`/interviews/${id}/finish`, { endedReason: 'abandoned' }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('finish request timeout')), 2500)),
-        ]).catch((error) => {
-            console.error('Failed to finish after proctor violation:', error);
-            finishWithBeacon('abandoned');
-        });
-
-        setTimeout(() => finishWithBeacon('abandoned'), 300);
-        const historyPath = `/dashboard/history/${id}`;
-        router.replace(historyPath);
-        setTimeout(() => {
-            if (window.location.pathname.includes(`/interview/${id}`)) {
-                window.location.replace(historyPath);
-            }
-        }, 200);
-    }, [id, router]);
 
     const handleBehavioralViolation = useCallback(async (reason: string) => {
         finalizeProctorViolation(reason);
