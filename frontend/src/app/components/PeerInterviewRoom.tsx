@@ -469,7 +469,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     const audioContext = new AudioContextCtor();
     const source = audioContext.createMediaStreamSource(stream);
     const gain = audioContext.createGain();
-    gain.gain.value = 20;
+    gain.gain.value = 1.1;
     source.connect(gain).connect(audioContext.destination);
 
     remotePlaybackContextRef.current = audioContext;
@@ -524,13 +524,10 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
         const remoteStream = event.streams[0];
         remoteStreamRef.current = remoteStream;
         remoteAudioRef.current.srcObject = remoteStream;
-        remoteAudioRef.current.muted = false;
+        remoteAudioRef.current.muted = true;
         remoteAudioRef.current.volume = 1;
         startRemoteMeter(remoteStream);
         startRemotePlayback(remoteStream);
-        void remoteAudioRef.current.play().catch(() => {
-          setMicError('Remote audio is connected, but the browser blocked autoplay. Click the mic button once on this page.');
-        });
       }
     };
 
@@ -571,15 +568,14 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true,
+          autoGainControl: false,
+          channelCount: 1,
+          sampleRate: 48000,
         },
       });
       localStreamRef.current = stream;
       addLocalTracks(stream);
       startLocalMeter(stream);
-      ensureRelayAudioContext();
-      startPcmRelay(stream);
-      startAudioRelay(stream);
       setMicActive(true);
       await patchSession({ micActive: true });
 
@@ -592,12 +588,10 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       console.error('Microphone failed:', error);
       setMicError('Microphone permission failed. Check browser permissions and try again.');
     }
-  }, [addLocalTracks, answerOffer, createOffer, effectiveRole, ensureRelayAudioContext, patchSession, session.rtcOffer, startAudioRelay, startPcmRelay]);
+  }, [addLocalTracks, answerOffer, createOffer, effectiveRole, patchSession, session.rtcOffer, startLocalMeter]);
 
   const stopMic = useCallback(async () => {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
-    stopAudioRelay();
-    stopPcmRelay();
     stopLocalMeter();
     stopRemoteMeter();
     stopRemotePlayback();
@@ -612,7 +606,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     hasSetRemoteAnswerRef.current = false;
     setMicActive(false);
     await patchSession({ micActive: false, micLevel: 0 });
-  }, [patchSession, stopAudioRelay, stopLocalMeter, stopPcmRelay, stopRemoteMeter, stopRemotePlayback]);
+  }, [patchSession, stopLocalMeter, stopRemoteMeter, stopRemotePlayback]);
 
   useEffect(() => {
     const fetchState = async () => {
@@ -630,19 +624,15 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       if ((res.data.peerRole || effectiveRole) === 'interviewer') {
         setAnswer(nextSession.currentAnswer || '');
         setCodeText(nextSession.codeText || '');
-        enqueuePcmPackets(nextSession.candidatePcmPackets || []);
-        enqueueRelayChunks(nextSession.candidateAudioChunks || []);
       } else {
         setQuestion(nextSession.currentQuestion || '');
-        enqueuePcmPackets(nextSession.interviewerPcmPackets || []);
-        enqueueRelayChunks(nextSession.interviewerAudioChunks || []);
       }
     };
 
     void fetchState();
     const interval = setInterval(fetchState, 750);
     return () => clearInterval(interval);
-  }, [effectiveRole, enqueuePcmPackets, enqueueRelayChunks, onFinish, sessionId]);
+  }, [effectiveRole, onFinish, sessionId]);
 
   useEffect(() => {
     if (!micActive) {
@@ -685,8 +675,6 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   useEffect(() => {
     return () => {
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
-      stopAudioRelay();
-      stopPcmRelay();
       peerConnectionRef.current?.close();
       stopLocalMeter();
       stopRemoteMeter();
@@ -694,7 +682,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       void relayAudioContextRef.current?.close();
       relayAudioContextRef.current = null;
     };
-  }, [stopAudioRelay, stopLocalMeter, stopPcmRelay, stopRemoteMeter, stopRemotePlayback]);
+  }, [stopLocalMeter, stopRemoteMeter, stopRemotePlayback]);
 
   const saveQuestion = async () => {
     setSaving(true);
@@ -721,14 +709,6 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     void remotePlaybackContextRef.current?.resume().then(() => {
       setRemotePlaybackReady(true);
     });
-    void ensureRelayAudioContext().resume().then(() => {
-      setRelayPlaybackReady(true);
-    });
-    void remoteAudioRef.current?.play().catch(() => {
-      setMicError('Remote audio could not start. Check browser autoplay settings and output device.');
-    });
-    void playPcmQueue();
-    void playRelayQueue();
   };
 
   const interviewerMicActive = Boolean(session.interviewerMicActive);

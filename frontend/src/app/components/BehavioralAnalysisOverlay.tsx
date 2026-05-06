@@ -51,6 +51,8 @@ export default function BehavioralAnalysisOverlay({
   const noFaceFrameCountRef = useRef(0);
   const frozenFrameCountRef = useRef(0);
   const previousFrameSignatureRef = useRef<number | null>(null);
+  const previousVideoTimeRef = useRef<number | null>(null);
+  const stalledVideoTicksRef = useRef(0);
   const faceDetectorRef = useRef<any>(null);
   const violationReportedRef = useRef(false);
   const onViolationRef = useRef(onViolation);
@@ -115,6 +117,7 @@ export default function BehavioralAnalysisOverlay({
     const BLACK_FRAME_THRESHOLD = 4;
     const NO_FACE_FRAME_THRESHOLD = 6;
     const FROZEN_FRAME_THRESHOLD = 15;
+    const STALLED_VIDEO_TICKS_THRESHOLD = 8;
 
     // Simulated behavioral analysis (in production, use ML model like TensorFlow.js)
     analysisIntervalRef.current = setInterval(async () => {
@@ -126,6 +129,26 @@ export default function BehavioralAnalysisOverlay({
 
         if (!primaryTrack || primaryTrack.readyState !== 'live' || primaryTrack.muted || !primaryTrack.enabled) {
           reportViolation('Camera feed stopped, muted, or disabled during the interview.');
+          return;
+        }
+
+        // Some browsers keep tracks "live" while frames stop updating.
+        // Detect that by checking video currentTime progression across sampling ticks.
+        if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+          reportViolation('Camera video stream is not delivering frames.');
+          return;
+        }
+
+        if (previousVideoTimeRef.current !== null && Math.abs(video.currentTime - previousVideoTimeRef.current) < 0.0001) {
+          stalledVideoTicksRef.current += 1;
+        } else {
+          stalledVideoTicksRef.current = 0;
+        }
+        previousVideoTimeRef.current = video.currentTime;
+
+        if (stalledVideoTicksRef.current >= STALLED_VIDEO_TICKS_THRESHOLD) {
+          reportViolation('Camera feed froze or stopped updating during the interview.');
+          stalledVideoTicksRef.current = 0;
           return;
         }
 
@@ -259,6 +282,8 @@ export default function BehavioralAnalysisOverlay({
       noFaceFrameCountRef.current = 0;
       frozenFrameCountRef.current = 0;
       previousFrameSignatureRef.current = null;
+      previousVideoTimeRef.current = null;
+      stalledVideoTicksRef.current = 0;
     };
   }, [isRecording, hasPermission, onMetricsUpdate, reportViolation]);
 

@@ -372,10 +372,22 @@ export default function InterviewRoom() {
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
-                    autoGainControl: true,
+                    autoGainControl: false,
+                    channelCount: 1,
+                    sampleRate: 48000,
                 },
             });
-            const recorder = new MediaRecorder(stream);
+            const preferredMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus'
+                : MediaRecorder.isTypeSupported('audio/webm')
+                    ? 'audio/webm'
+                    : undefined;
+            const recorder = new MediaRecorder(
+                stream,
+                preferredMimeType
+                    ? { mimeType: preferredMimeType, audioBitsPerSecond: 128000 }
+                    : { audioBitsPerSecond: 128000 }
+            );
             answerAudioChunksRef.current = [];
             mediaRecorderRef.current = recorder;
 
