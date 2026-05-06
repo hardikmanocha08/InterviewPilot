@@ -39,8 +39,6 @@ export default function InterviewRoom() {
     const timerExpiredRef = useRef(false);
     const canAbandonOnUnmountRef = useRef(false);
     const submittedBehavioralMetricsRef = useRef(0);
-    const lastProctorHeartbeatRef = useRef<number>(Date.now());
-    const hasSeenProctorHeartbeatRef = useRef(false);
     const proctorViolationRef = useRef(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const answerAudioChunksRef = useRef<Blob[]>([]);
@@ -70,10 +68,6 @@ export default function InterviewRoom() {
                     setTimeLeftSeconds(normalizedInterview.perQuestionTimeSeconds);
                 } else {
                     setTimeLeftSeconds(null);
-                }
-                if (Boolean(normalizedInterview?.behavioralAnalysis?.isEnabled)) {
-                    lastProctorHeartbeatRef.current = Date.now();
-                    hasSeenProctorHeartbeatRef.current = false;
                 }
             } catch (error) {
                 console.error("Failed to fetch interview session:", error);
@@ -348,9 +342,6 @@ export default function InterviewRoom() {
         if (!id) {
             return;
         }
-        hasSeenProctorHeartbeatRef.current = true;
-        lastProctorHeartbeatRef.current = Date.now();
-
         const newMetrics = metrics.slice(submittedBehavioralMetricsRef.current);
         if (newMetrics.length === 0) {
             return;
@@ -366,29 +357,8 @@ export default function InterviewRoom() {
         }
     }, [id]);
 
-    useEffect(() => {
-        if (!isProctoredInterview || !id || interview?.status === 'completed') {
-            return;
-        }
-
-        const HEARTBEAT_TIMEOUT_MS = 15000;
-
-        const interval = setInterval(() => {
-            if (hasFinalizedRef.current || proctorViolationRef.current) {
-                clearInterval(interval);
-                return;
-            }
-            if (!hasSeenProctorHeartbeatRef.current) {
-                return;
-            }
-            const now = Date.now();
-            if (now - lastProctorHeartbeatRef.current > HEARTBEAT_TIMEOUT_MS) {
-                finalizeProctorViolation('Proctoring stream interrupted. Camera feed appears inactive.');
-            }
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, [finalizeProctorViolation, id, interview?.status, isProctoredInterview]);
+    // Heartbeat is tracked for observability only.
+    // Auto-ending based on heartbeat created false positives on some browsers/devices.
 
     const handlePeerSessionReady = useCallback((sessionId: string) => {
         setInterview((current: any) => current ? { ...current, peerSessionId: sessionId } : current);
