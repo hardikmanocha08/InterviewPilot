@@ -40,6 +40,7 @@ export default function InterviewRoom() {
     const canAbandonOnUnmountRef = useRef(false);
     const submittedBehavioralMetricsRef = useRef(0);
     const lastProctorHeartbeatRef = useRef<number>(Date.now());
+    const hasSeenProctorHeartbeatRef = useRef(false);
     const proctorViolationRef = useRef(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const answerAudioChunksRef = useRef<Blob[]>([]);
@@ -72,6 +73,7 @@ export default function InterviewRoom() {
                 }
                 if (Boolean(normalizedInterview?.behavioralAnalysis?.isEnabled)) {
                     lastProctorHeartbeatRef.current = Date.now();
+                    hasSeenProctorHeartbeatRef.current = false;
                 }
             } catch (error) {
                 console.error("Failed to fetch interview session:", error);
@@ -346,6 +348,7 @@ export default function InterviewRoom() {
         if (!id) {
             return;
         }
+        hasSeenProctorHeartbeatRef.current = true;
         lastProctorHeartbeatRef.current = Date.now();
 
         const newMetrics = metrics.slice(submittedBehavioralMetricsRef.current);
@@ -368,19 +371,17 @@ export default function InterviewRoom() {
             return;
         }
 
-        const HEARTBEAT_GRACE_MS = 8000;
-        const HEARTBEAT_TIMEOUT_MS = 4000;
-        const startedAt = Date.now();
+        const HEARTBEAT_TIMEOUT_MS = 15000;
 
         const interval = setInterval(() => {
             if (hasFinalizedRef.current || proctorViolationRef.current) {
                 clearInterval(interval);
                 return;
             }
-            const now = Date.now();
-            if (now - startedAt < HEARTBEAT_GRACE_MS) {
+            if (!hasSeenProctorHeartbeatRef.current) {
                 return;
             }
+            const now = Date.now();
             if (now - lastProctorHeartbeatRef.current > HEARTBEAT_TIMEOUT_MS) {
                 finalizeProctorViolation('Proctoring stream interrupted. Camera feed appears inactive.');
             }

@@ -47,6 +47,7 @@ export default function BehavioralAnalysisOverlay({
     status: 'Starting camera',
   });
   const [cameraWarning, setCameraWarning] = useState('');
+  const [detectorMode, setDetectorMode] = useState<'ML' | 'Browser' | 'Heuristic'>('Heuristic');
   const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const blackFrameCountRef = useRef(0);
   const noFaceFrameCountRef = useRef(0);
@@ -57,6 +58,9 @@ export default function BehavioralAnalysisOverlay({
   const lastVideoFrameAtRef = useRef<number>(Date.now());
   const frameCallbackHandleRef = useRef<number | null>(null);
   const hasFrameCallbackSupportRef = useRef(false);
+  const mlFaceDetectorRef = useRef<any>(null);
+  const mlDetectorInitAttemptedRef = useRef(false);
+  const mlDetectorFailedRef = useRef(false);
   const faceDetectorRef = useRef<any>(null);
   const violationReportedRef = useRef(false);
   const onViolationRef = useRef(onViolation);
@@ -123,6 +127,32 @@ export default function BehavioralAnalysisOverlay({
     const FROZEN_FRAME_THRESHOLD = 30;
     const STALLED_VIDEO_TICKS_THRESHOLD = 20;
     const FRAME_WATCHDOG_TIMEOUT_MS = 5000;
+    const initMlFaceDetector = async () => {
+      if (mlDetectorInitAttemptedRef.current || mlFaceDetectorRef.current || mlDetectorFailedRef.current) {
+        return;
+      }
+      mlDetectorInitAttemptedRef.current = true;
+      try {
+        const tf = await import('@tensorflow/tfjs-core');
+        await import('@tensorflow/tfjs-backend-webgl');
+        const faceDetection = await import('@tensorflow-models/face-detection');
+        await tf.setBackend('webgl').catch(() => undefined);
+        await tf.ready();
+        mlFaceDetectorRef.current = await faceDetection.createDetector(
+          faceDetection.SupportedModels.MediaPipeFaceDetector,
+          {
+            runtime: 'tfjs',
+            maxFaces: 1,
+            modelType: 'short',
+          }
+        );
+        setDetectorMode('ML');
+      } catch (error) {
+        mlDetectorFailedRef.current = true;
+        setDetectorMode('Heuristic');
+        console.warn('ML face detector unavailable, using browser fallback detector only.', error);
+      }
+    };
 
     const scheduleVideoFrameWatchdog = () => {
       if (!videoRef.current || violationReportedRef.current) {
@@ -143,6 +173,7 @@ export default function BehavioralAnalysisOverlay({
     };
     lastVideoFrameAtRef.current = Date.now();
     scheduleVideoFrameWatchdog();
+    void initMlFaceDetector();
 
     // Simulated behavioral analysis (in production, use ML model like TensorFlow.js)
     analysisIntervalRef.current = setInterval(async () => {
@@ -249,24 +280,40 @@ export default function BehavioralAnalysisOverlay({
             return;
           }
 
-          const FaceDetectorCtor = (window as any).FaceDetector;
-          if (!FaceDetectorCtor) {
-            noFaceFrameCountRef.current = 0;
-          } else {
-            if (!faceDetectorRef.current) {
-              faceDetectorRef.current = new FaceDetectorCtor({ fastMode: true, maxDetectedFaces: 1 });
-            }
-
+          if (mlFaceDetectorRef.current) {
+            setDetectorMode('ML');
             try {
-              const faces = await faceDetectorRef.current.detect(canvas);
+              const faces = await mlFaceDetectorRef.current.estimateFaces(video, { flipHorizontal: false });
               if (!faces.length) {
                 noFaceFrameCountRef.current += 1;
               } else {
                 noFaceFrameCountRef.current = 0;
               }
             } catch {
-              // Detector occasionally fails transiently; avoid false violation spikes.
               noFaceFrameCountRef.current = 0;
+            }
+          } else {
+            const FaceDetectorCtor = (window as any).FaceDetector;
+            if (!FaceDetectorCtor) {
+              setDetectorMode('Heuristic');
+              noFaceFrameCountRef.current = 0;
+            } else {
+              setDetectorMode('Browser');
+              if (!faceDetectorRef.current) {
+                faceDetectorRef.current = new FaceDetectorCtor({ fastMode: true, maxDetectedFaces: 1 });
+              }
+
+              try {
+                const faces = await faceDetectorRef.current.detect(canvas);
+                if (!faces.length) {
+                  noFaceFrameCountRef.current += 1;
+                } else {
+                  noFaceFrameCountRef.current = 0;
+                }
+              } catch {
+                // Detector occasionally fails transiently; avoid false violation spikes.
+                noFaceFrameCountRef.current = 0;
+              }
             }
           }
 
@@ -321,6 +368,9 @@ export default function BehavioralAnalysisOverlay({
       stalledVideoTicksRef.current = 0;
       frameCallbackHandleRef.current = null;
       hasFrameCallbackSupportRef.current = false;
+      mlFaceDetectorRef.current = null;
+      mlDetectorInitAttemptedRef.current = false;
+      setDetectorMode('Heuristic');
       setCameraWarning('');
     };
   }, [isRecording, hasPermission, onMetricsUpdate, reportViolation]);
@@ -385,6 +435,9 @@ export default function BehavioralAnalysisOverlay({
         <div className="flex items-center space-x-1.5 text-xs text-text-muted">
           <FiCamera className="w-3 h-3 text-primary animate-pulse" />
           <span>{cameraHealth.status}</span>
+          <span className="px-1.5 py-0.5 rounded border border-border text-[10px] text-primary">
+            Detector: {detectorMode}
+          </span>
         </div>
         <span className="text-xs font-semibold text-primary">
           B{cameraHealth.brightness} V{cameraHealth.variance}
