@@ -39,6 +39,7 @@ export default function InterviewRoom() {
     const timerExpiredRef = useRef(false);
     const canAbandonOnUnmountRef = useRef(false);
     const submittedBehavioralMetricsRef = useRef(0);
+    const lastProctorHeartbeatRef = useRef<number>(Date.now());
     const proctorViolationRef = useRef(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const answerAudioChunksRef = useRef<Blob[]>([]);
@@ -68,6 +69,9 @@ export default function InterviewRoom() {
                     setTimeLeftSeconds(normalizedInterview.perQuestionTimeSeconds);
                 } else {
                     setTimeLeftSeconds(null);
+                }
+                if (Boolean(normalizedInterview?.behavioralAnalysis?.isEnabled)) {
+                    lastProctorHeartbeatRef.current = Date.now();
                 }
             } catch (error) {
                 console.error("Failed to fetch interview session:", error);
@@ -342,6 +346,7 @@ export default function InterviewRoom() {
         if (!id) {
             return;
         }
+        lastProctorHeartbeatRef.current = Date.now();
 
         const newMetrics = metrics.slice(submittedBehavioralMetricsRef.current);
         if (newMetrics.length === 0) {
@@ -357,6 +362,32 @@ export default function InterviewRoom() {
             console.error('Failed to submit behavioral metrics:', error);
         }
     }, [id]);
+
+    useEffect(() => {
+        if (!isProctoredInterview || !id || interview?.status === 'completed') {
+            return;
+        }
+
+        const HEARTBEAT_GRACE_MS = 8000;
+        const HEARTBEAT_TIMEOUT_MS = 4000;
+        const startedAt = Date.now();
+
+        const interval = setInterval(() => {
+            if (hasFinalizedRef.current || proctorViolationRef.current) {
+                clearInterval(interval);
+                return;
+            }
+            const now = Date.now();
+            if (now - startedAt < HEARTBEAT_GRACE_MS) {
+                return;
+            }
+            if (now - lastProctorHeartbeatRef.current > HEARTBEAT_TIMEOUT_MS) {
+                finalizeProctorViolation('Proctoring stream interrupted. Camera feed appears inactive.');
+            }
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [finalizeProctorViolation, id, interview?.status, isProctoredInterview]);
 
     const handlePeerSessionReady = useCallback((sessionId: string) => {
         setInterview((current: any) => current ? { ...current, peerSessionId: sessionId } : current);

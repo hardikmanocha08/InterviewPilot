@@ -46,6 +46,7 @@ export default function BehavioralAnalysisOverlay({
     variance: 0,
     status: 'Starting camera',
   });
+  const [cameraWarning, setCameraWarning] = useState('');
   const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const blackFrameCountRef = useRef(0);
   const noFaceFrameCountRef = useRef(0);
@@ -156,6 +157,7 @@ export default function BehavioralAnalysisOverlay({
         // Some browsers keep tracks "live" while frames stop updating.
         // Detect that by checking video currentTime progression across sampling ticks.
         if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+          setCameraWarning('Warning: camera stream is not delivering frames.');
           reportViolation('Camera video stream is not delivering frames.');
           return;
         }
@@ -168,12 +170,14 @@ export default function BehavioralAnalysisOverlay({
         previousVideoTimeRef.current = video.currentTime;
 
         if (stalledVideoTicksRef.current >= STALLED_VIDEO_TICKS_THRESHOLD) {
+          setCameraWarning('Warning: camera feed appears frozen.');
           reportViolation('Camera feed froze or stopped updating during the interview.');
           stalledVideoTicksRef.current = 0;
           return;
         }
 
         if (Date.now() - lastVideoFrameAtRef.current > FRAME_WATCHDOG_TIMEOUT_MS) {
+          setCameraWarning('Warning: no live camera frames detected.');
           reportViolation('Camera stopped producing live frames during the interview.');
           return;
         }
@@ -224,8 +228,10 @@ export default function BehavioralAnalysisOverlay({
           const isFlatFrame = variance < 10;
           if (isNearBlack || isFlatFrame) {
             blackFrameCountRef.current += 1;
+            setCameraWarning('Warning: camera feed looks black/blank.');
           } else {
             blackFrameCountRef.current = 0;
+            setCameraWarning('');
           }
 
           if (blackFrameCountRef.current >= BLACK_FRAME_THRESHOLD) {
@@ -311,6 +317,7 @@ export default function BehavioralAnalysisOverlay({
       previousVideoTimeRef.current = null;
       stalledVideoTicksRef.current = 0;
       frameCallbackHandleRef.current = null;
+      setCameraWarning('');
     };
   }, [isRecording, hasPermission, onMetricsUpdate, reportViolation]);
 
@@ -334,6 +341,11 @@ export default function BehavioralAnalysisOverlay({
 
         {/* Metrics Overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex flex-col justify-end p-3">
+          {cameraWarning && (
+            <div className="mb-2 rounded border border-red-500/50 bg-red-500/20 px-2 py-1 text-[10px] text-red-100">
+              {cameraWarning}
+            </div>
+          )}
           <div className="space-y-2 text-xs text-white">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-1">
