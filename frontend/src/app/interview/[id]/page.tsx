@@ -4,7 +4,6 @@ import { useCallback, useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
-import BehavioralAnalysisOverlay from '@/app/components/BehavioralAnalysisOverlay';
 import PeerInterviewRoom from '@/app/components/PeerInterviewRoom';
 import PeerLobby from '@/app/components/PeerLobby';
 import { FiSend, FiCheckCircle, FiChevronRight, FiAlertCircle, FiBarChart2, FiThumbsUp, FiTrendingDown, FiXCircle, FiMic, FiMicOff } from 'react-icons/fi';
