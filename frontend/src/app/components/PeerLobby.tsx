@@ -15,7 +15,9 @@ interface PeerSession {
   role: string;
   experienceLevel: string;
   createdAt: string;
+  visibility?: 'public' | 'private';
 }
+
 
 interface PeerLobbyProps {
   onJoinSession: (sessionId: string) => void;
@@ -75,6 +77,12 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
       });
       setOwnSession(res.data.session || res.data);
       setError(null);
+
+      // If we created a private room, generate & show the shareable join code.
+      if (peerRole === 'interviewee' && visibility === 'private') {
+        const codeRes = await api.post('/peer-sessions/generate-join-code', { length: 8 });
+        setPrivateJoinCode(codeRes.data.joinCode || '');
+      }
     } catch (err) {
       console.error('Failed to create peer session:', err);
       setError('Failed to create a peer session');
@@ -84,6 +92,7 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
   };
 
   const handleJoinSession = async (sessionId: string) => {
+
     try {
       setRefreshing(true);
       await api.post(`/peer-sessions/${sessionId}/join`, { interviewId });
@@ -93,6 +102,39 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
       setError('Failed to join session. It may have been taken.');
       await new Promise(resolve => setTimeout(resolve, 2000));
       await fetchPeerSessions();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const [privateJoinCode, setPrivateJoinCode] = useState('');
+
+  const handleJoinByCode = async () => {
+    const code = privateJoinCode.trim();
+    if (!code) {
+      setError('Enter a join code');
+      return;
+    }
+
+    try {
+      setRefreshing(true);
+      setError(null);
+
+      const res = await api.post('/peer-sessions/join-by-code', {
+        interviewId,
+        joinCode: code,
+      });
+
+      // Private join-by-code route returns { session, peerRole }
+      const sessionId = res.data?.session?._id;
+      if (!sessionId) {
+        throw new Error('Missing session id from server');
+      }
+
+      onJoinSession(sessionId);
+    } catch (err: any) {
+      console.error('Failed to join by code:', err);
+      setError(err?.response?.data?.message || 'Invalid or expired join code');
     } finally {
       setRefreshing(false);
     }
@@ -130,8 +172,18 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
           className="mb-4 p-4 bg-primary/10 border border-primary/20 rounded-lg text-primary"
         >
           Your peer session is live. Waiting for another candidate to join...
+
+          {ownSession.visibility === 'private' && (
+            <div className="mt-3">
+              <div className="text-xs text-text-muted">Share this code with the interviewer:</div>
+              <div className="mt-1 font-mono text-sm sm:text-base text-white bg-background border border-border rounded-lg px-3 py-2 inline-block">
+                {privateJoinCode || 'Generating...'}
+              </div>
+            </div>
+          )}
         </motion.div>
       )}
+
 
       {peerRole === 'interviewee' && !ownSession && !loading && (
         <button

@@ -505,6 +505,7 @@ export default function InterviewRoom() {
                     role={interview.role}
                     experienceLevel={interview.experienceLevel}
                     peerRole={peerRole || 'interviewee'}
+                    visibility={interview.peerVisibility || 'public'}
                     onJoinSession={handlePeerSessionReady}
                 />
             </div>
