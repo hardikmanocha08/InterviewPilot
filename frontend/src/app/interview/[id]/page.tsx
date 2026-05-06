@@ -522,12 +522,7 @@ export default function InterviewRoom() {
 
     return (
         <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden relative">
-            <BehavioralAnalysisOverlay
-                isEnabled={isProctoredInterview}
-                isRecording={!finishing && interview.status !== 'completed'}
-                onMetricsUpdate={handleBehavioralMetricsUpdate}
-                onViolation={handleBehavioralViolation}
-            />
+
             {/* Left panel: Info  & Progress */}
             <div className="w-full md:w-1/3 bg-surface border-b md:border-b-0 md:border-r border-border p-3 sm:p-4 md:p-6 flex flex-col h-auto md:h-full overflow-hidden">
                 <div className="mb-4 md:mb-8">
