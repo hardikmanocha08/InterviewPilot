@@ -148,15 +148,36 @@ export default function BehavioralAnalysisOverlay({
             status: 'Camera active',
           });
 
-          if (averageBrightness < 55) {
-            reportViolation('Camera went black during the interview.');
-            return;
+          // If the camera feed goes effectively black (or stays near-black for a bit), end the interview.
+          // We use a variance+brightness combo to detect “covered lens / blank frames” too.
+          const isNearBlack = averageBrightness < 55;
+          const isLowVariance = variance < 12;
+          const isBlockedOrOverexposed = averageBrightness > 245 || isLowVariance;
+
+          if (isNearBlack || isBlockedOrOverexposed) {
+            // Require 2 consecutive “bad” frames to reduce false positives.
+            const state = voiceAnalysisRef.current;
+            // Reuse silenceDuration as a lightweight consecutive-frame counter.
+            // (We keep it separate from actual voice analysis; this overlay currently simulates metrics.)
+            if (!state.silenceDuration) {
+              state.silenceDuration = 1;
+            } else {
+              state.silenceDuration += 1;
+            }
+
+            if (state.silenceDuration >= 2) {
+              const reason = isNearBlack
+                ? 'Camera went black (no video / lens covered) during the interview.'
+                : 'Camera view appears blocked/blank during the interview.';
+              reportViolation(reason);
+              state.silenceDuration = 0;
+              return;
+            }
+          } else {
+            // Reset counter when frames look healthy.
+            voiceAnalysisRef.current.silenceDuration = 0;
           }
 
-          if (averageBrightness > 245 || variance < 12) {
-            reportViolation('Camera view appears blocked, blank, or overexposed.');
-            return;
-          }
 
           const FaceDetectorCtor = (window as any).FaceDetector;
           if (FaceDetectorCtor) {
