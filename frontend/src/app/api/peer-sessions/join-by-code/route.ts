@@ -63,26 +63,26 @@ export async function POST(
       return NextResponse.json({ message: 'Not authorized' }, { status: 401 });
     }
 
-    if (session.candidateId.toString() === user._id.toString()) {
+    // In private mode, the interviewer is the creator. The joiner (user) is the candidate.
+    if (session.interviewerId?.toString() === user._id.toString()) {
       return NextResponse.json({ message: 'Cannot join own session' }, { status: 400 });
     }
 
-
-    // Ensure this interviewer is the same interviewer-owner for both.
-    // In current system, both sides reference the same interview document(s).
-    // We keep behavior consistent with existing join endpoint.
-    session.interviewerId = user._id;
-    session.interviewerInterviewId = interview._id;
+    // The joiner becomes the candidate for this session
+    session.candidateId = user._id;
+    session.candidateInterviewId = interview._id;
+    
     session.status = 'active';
     session.startedAt = new Date();
     await session.save();
 
-
-    await Interview.findByIdAndUpdate(session.candidateInterviewId, {
+    // Update the interviewer's interview (the creator)
+    await Interview.findByIdAndUpdate(session.interviewerInterviewId, {
       interviewMode: 'peer',
       peerSessionId: session._id,
     });
 
+    // Update the candidate's interview (the joiner)
     await Interview.findByIdAndUpdate(interviewId, {
       interviewMode: 'peer',
       peerSessionId: session._id,
@@ -95,4 +95,3 @@ export async function POST(
     return NextResponse.json({ message: 'Failed to join session' }, { status: 500 });
   }
 }
-

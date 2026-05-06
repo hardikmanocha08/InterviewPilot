@@ -47,7 +47,8 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
       setOwnSession(currentOwnSession);
       setError(null);
 
-      if (peerRole === 'interviewee' && currentOwnSession?.status === 'active') {
+      // Auto-join the creator when their session becomes active
+      if (currentOwnSession?.status === 'active') {
         onJoinSession(currentOwnSession._id);
       }
     } catch (err) {
@@ -70,7 +71,7 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
   // If the user already has a private session, ensure we have a join code displayed.
   useEffect(() => {
     const canGenerate =
-      peerRole === 'interviewee' &&
+      peerRole === 'interviewer' &&
       ownSession?.visibility === 'private' &&
       (ownSession.status === 'waiting' || ownSession.status === 'active') &&
       !privateJoinCode;
@@ -90,18 +91,18 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
   const handleCreateSession = async () => {
     try {
       setRefreshing(true);
-      const visibility = peerRole === 'interviewee' ? 'private' : 'public';
       const res = await api.post('/peer-sessions', {
         interviewId,
         role,
         experienceLevel,
         visibility,
+        peerRole, // Pass role so backend knows if interviewer or interviewee is creating
       });
       setOwnSession(res.data.session || res.data);
       setError(null);
 
-      // If we created a private room, generate & show the shareable join code.
-      if (peerRole === 'interviewee' && visibility === 'private') {
+      // If interviewer created a private room, generate & show the shareable join code.
+      if (peerRole === 'interviewer' && visibility === 'private') {
         const codeRes = await api.post('/peer-sessions/generate-join-code', { length: 8 });
         setPrivateJoinCode(codeRes.data.joinCode || '');
       }
@@ -165,12 +166,14 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
       <div className="mb-6">
         <div className="flex items-center space-x-3 mb-4">
           <FiUsers className="w-6 h-6 text-primary" />
-          <h2 className="text-2xl font-bold text-white">Find a Peer Interviewer</h2>
+          <h2 className="text-2xl font-bold text-white">
+            {visibility === 'private' ? 'Private Mock Interview' : 'Find a Peer'}
+          </h2>
         </div>
         <p className="text-text-muted">
-          {peerRole === 'interviewee'
-            ? 'Create a room and wait for a human interviewer.'
-            : 'Join a waiting candidate as their human interviewer.'}
+          {visibility === 'private' 
+            ? (peerRole === 'interviewer' ? 'Create a private room and share the code.' : 'Enter the private code to join the interviewer.')
+            : (peerRole === 'interviewee' ? 'Create a public room and wait.' : 'Find a candidate to interview.')}
         </p>
       </div>
 
@@ -185,13 +188,13 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
         </motion.div>
       )}
 
-      {peerRole === 'interviewee' && ownSession?.status === 'waiting' && (
+      {ownSession?.status === 'waiting' && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-4 p-4 bg-primary/10 border border-primary/20 rounded-lg text-primary"
+          className="mb-4 p-4 bg-primary/10 border border-primary/20 rounded-lg text-primary text-sm"
         >
-          Your peer session is live. Waiting for another candidate to join...
+          Your session is live. Waiting for the other participant to join...
 
           {ownSession.visibility === 'private' && (
             <div className="mt-3">
@@ -204,8 +207,8 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
         </motion.div>
       )}
 
-      {/* Interviewer: private room join-by-code UI */}
-      {peerRole === 'interviewer' && (
+      {/* Interviewee: private room join-by-code UI */}
+      {peerRole === 'interviewee' && visibility === 'private' && !ownSession && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -213,12 +216,8 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
         >
           <div className="flex items-center justify-between gap-3 mb-2">
             <div>
-              <h3 className="text-white font-semibold text-sm">Join private room</h3>
-              <p className="text-text-muted text-xs mt-1">
-                {visibility === 'private'
-                  ? 'Enter the code shared by the interviewee.'
-                  : 'If the interviewee shared a private code, enter it here.'}
-              </p>
+              <h3 className="text-white font-semibold text-sm">Join Private Room</h3>
+              <p className="text-text-muted text-xs mt-1">Enter the code shared by your interviewer.</p>
             </div>
           </div>
 
@@ -241,15 +240,16 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
         </motion.div>
       )}
 
-
-      {peerRole === 'interviewee' && !ownSession && !loading && (
+      {/* Show Create button based on visibility/role logic */}
+      {((visibility === 'private' && peerRole === 'interviewer') || (visibility === 'public' && peerRole === 'interviewee')) 
+        && !ownSession && !loading && (
         <button
           onClick={handleCreateSession}
           disabled={refreshing}
           className="w-full mb-4 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
         >
           <FiPlus className="w-4 h-4" />
-          <span>{refreshing ? 'Creating room...' : 'Create interviewee room'}</span>
+          <span>{refreshing ? 'Creating room...' : `Create ${peerRole} room`}</span>
         </button>
       )}
 
