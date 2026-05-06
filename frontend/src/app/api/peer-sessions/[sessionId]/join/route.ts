@@ -25,7 +25,7 @@ export async function POST(
       return NextResponse.json({ message: 'Session not available' }, { status: 404 });
     }
 
-    if (session.candidateId.toString() === user._id.toString()) {
+    if (session.candidateId?.toString() === user._id.toString()) {
       return NextResponse.json({ message: 'Cannot join own session' }, { status: 400 });
     }
 
@@ -43,10 +43,12 @@ export async function POST(
     await session.save();
 
     // Update both interviews to reference peer session
-    await Interview.findByIdAndUpdate(session.candidateInterviewId, {
-      interviewMode: 'peer',
-      peerSessionId: session._id,
-    });
+    if (session.candidateInterviewId) {
+      await Interview.findByIdAndUpdate(session.candidateInterviewId, {
+        interviewMode: 'peer',
+        peerSessionId: session._id,
+      });
+    }
 
     await Interview.findByIdAndUpdate(interviewId, {
       interviewMode: 'peer',
