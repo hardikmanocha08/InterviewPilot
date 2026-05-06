@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
     interviewMode,
     enableBehavioralAnalysis,
     peerMode,
+    peerVisibility,
   } = await req.json();
 
   if (!role || !experienceLevel) {
@@ -71,6 +72,7 @@ export async function POST(req: NextRequest) {
       experienceLevel,
       industryMode: selectedIndustry,
       interviewMode: selectedMode,
+      peerVisibility: peerMode ? (peerVisibility || 'public') : 'public',
       perQuestionTimeSeconds,
       questions,
       behavioralAnalysis: {

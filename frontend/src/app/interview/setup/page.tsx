@@ -234,8 +234,8 @@ export default function InterviewSetup() {
 
                                 <p className="text-xs text-text-muted mt-2 ml-1">
                                     {formData.peerVisibility === 'private'
-                                        ? 'Candidate creates a room with an auto-generated code. Interviewer joins using that code.'
-                                        : 'Existing behavior: interviewer finds a waiting room.'}
+                                        ? 'Interviewer creates a room with a code. Interviewee enters the code to join.'
+                                        : 'Interviewee creates a public room. Interviewer browses and joins available rooms.'}
                                 </p>
                             </div>
                         )}

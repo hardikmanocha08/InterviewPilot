@@ -68,26 +68,6 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
 
   const [privateJoinCode, setPrivateJoinCode] = useState('');
 
-  // If the user already has a private session, ensure we have a join code displayed.
-  useEffect(() => {
-    const canGenerate =
-      peerRole === 'interviewer' &&
-      ownSession?.visibility === 'private' &&
-      (ownSession.status === 'waiting' || ownSession.status === 'active') &&
-      !privateJoinCode;
-
-    if (!canGenerate) return;
-
-    void (async () => {
-      try {
-        const codeRes = await api.post('/peer-sessions/generate-join-code', { length: 8 });
-        setPrivateJoinCode(codeRes.data.joinCode || '');
-      } catch (e) {
-        console.error('Failed to generate join code:', e);
-      }
-    })();
-  }, [peerRole, ownSession, privateJoinCode]);
-
   const handleCreateSession = async () => {
     try {
       setRefreshing(true);
@@ -96,15 +76,13 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
         role,
         experienceLevel,
         visibility,
-        peerRole, // Pass role so backend knows if interviewer or interviewee is creating
+        peerRole,
       });
       setOwnSession(res.data.session || res.data);
       setError(null);
 
-      // If interviewer created a private room, generate & show the shareable join code.
-      if (peerRole === 'interviewer' && visibility === 'private') {
-        const codeRes = await api.post('/peer-sessions/generate-join-code', { length: 8 });
-        setPrivateJoinCode(codeRes.data.joinCode || '');
+      if (res.data.joinCode) {
+        setPrivateJoinCode(res.data.joinCode);
       }
     } catch (err) {
       console.error('Failed to create peer session:', err);
@@ -196,9 +174,9 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
         >
           Your session is live. Waiting for the other participant to join...
 
-          {ownSession.visibility === 'private' && (
+          {ownSession.visibility === 'private' && peerRole === 'interviewer' && (
             <div className="mt-3">
-              <div className="text-xs text-text-muted">Share this code with the interviewer:</div>
+              <div className="text-xs text-text-muted">Share this code with the interviewee:</div>
               <div className="mt-1 font-mono text-sm sm:text-base text-white bg-background border border-border rounded-lg px-3 py-2 inline-block">
                 {privateJoinCode || 'Generating...'}
               </div>
@@ -241,15 +219,14 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
       )}
 
       {/* Show Create button based on visibility/role logic */}
-      {((visibility === 'private' && peerRole === 'interviewer') || (visibility === 'public' && peerRole === 'interviewee')) 
-        && !ownSession && !loading && (
+      {!ownSession && !loading && (
         <button
           onClick={handleCreateSession}
           disabled={refreshing}
           className="w-full mb-4 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
         >
           <FiPlus className="w-4 h-4" />
-          <span>{refreshing ? 'Creating room...' : `Create ${peerRole} room`}</span>
+          <span>{refreshing ? 'Creating room...' : `Create ${visibility} room`}</span>
         </button>
       )}
 
@@ -258,6 +235,51 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
           <FiLoader className="w-8 h-8 text-primary animate-spin mb-4" />
           <p className="text-text-muted">Loading available peers...</p>
         </div>
+      ) : visibility === 'public' && peerRole === 'interviewer' ? (
+        sessions.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="py-12 text-center border border-dashed border-border rounded-lg"
+          >
+            <FiUsers className="w-12 h-12 text-text-muted mx-auto mb-4 opacity-50" />
+            <p className="text-text-muted mb-4">No peers currently waiting for interviews</p>
+            <p className="text-sm text-text-muted">Create a private room or refresh in a moment.</p>
+          </motion.div>
+        ) : (
+          <motion.div className="space-y-3">
+            <AnimatePresence>
+              {sessions.map(session => (
+                <motion.div
+                  key={session._id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="bg-surface border border-border rounded-lg p-4 hover:border-primary/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-white mb-1">{session.role}</h3>
+                      <div className="flex items-center space-x-3 text-sm text-text-muted">
+                        <span>Experience: {session.experienceLevel}</span>
+                        <span>•</span>
+                        <span>Waiting {Math.floor((Date.now() - new Date(session.createdAt).getTime()) / 60000)}m</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleJoinSession(session._id)}
+                      disabled={refreshing}
+                      className="bg-primary hover:bg-primary-hover disabled:opacity-50 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 whitespace-nowrap"
+                    >
+                      <span>Join</span>
+                      <FiArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </motion.div>
+        )
       ) : peerRole === 'interviewee' ? (
         <motion.div
           initial={{ opacity: 0 }}
@@ -265,51 +287,21 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
           className="py-12 text-center border border-dashed border-border rounded-lg"
         >
           <FiUsers className="w-12 h-12 text-text-muted mx-auto mb-4 opacity-50" />
-          <p className="text-text-muted mb-2">Waiting for an interviewer</p>
-          <p className="text-sm text-text-muted">Keep this page open. You will enter the room automatically when someone joins.</p>
+          <p className="text-text-muted mb-2">
+            {visibility === 'private' ? 'Enter the code shared by your interviewer' : 'Waiting for an interviewer'}
+          </p>
+          <p className="text-sm text-text-muted">
+            {visibility === 'private' ? 'Use the join code input above to connect.' : 'Keep this page open. You will enter the room automatically when someone joins.'}
+          </p>
         </motion.div>
-      ) : sessions.length === 0 ? (
+      ) : (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="py-12 text-center border border-dashed border-border rounded-lg"
         >
           <FiUsers className="w-12 h-12 text-text-muted mx-auto mb-4 opacity-50" />
-          <p className="text-text-muted mb-4">No peers currently waiting for interviews</p>
-          <p className="text-sm text-text-muted">Refresh in a moment or ask the interviewee to create a room.</p>
-        </motion.div>
-      ) : (
-        <motion.div className="space-y-3">
-          <AnimatePresence>
-            {sessions.map(session => (
-              <motion.div
-                key={session._id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="bg-surface border border-border rounded-lg p-4 hover:border-primary/50 transition-colors"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-white mb-1">{session.role}</h3>
-                    <div className="flex items-center space-x-3 text-sm text-text-muted">
-                      <span>Experience: {session.experienceLevel}</span>
-                      <span>•</span>
-                      <span>Waiting {Math.floor((Date.now() - new Date(session.createdAt).getTime()) / 60000)}m</span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleJoinSession(session._id)}
-                    disabled={refreshing}
-                    className="bg-primary hover:bg-primary-hover disabled:opacity-50 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 whitespace-nowrap"
-                  >
-                    <span>Join</span>
-                    <FiArrowRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
+          <p className="text-text-muted mb-4">No available peers</p>
         </motion.div>
       )}
 

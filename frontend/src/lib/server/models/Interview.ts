@@ -24,6 +24,7 @@ export interface IInterview extends Document {
   user: mongoose.Types.ObjectId;
   peerSessionId?: mongoose.Types.ObjectId;
   isAIPeerSession?: boolean;
+  peerVisibility?: 'public' | 'private';
   role: string;
   experienceLevel: string;
   industryMode: 'Product company' | 'Service company' | 'Startup' | 'MNC';
@@ -63,6 +64,11 @@ const interviewSchema = new mongoose.Schema<IInterview>(
     isAIPeerSession: {
       type: Boolean,
       default: false,
+    },
+    peerVisibility: {
+      type: String,
+      enum: ['public', 'private'],
+      default: 'public',
     },
     role: {
       type: String,
