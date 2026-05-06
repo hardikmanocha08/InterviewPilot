@@ -49,6 +49,8 @@ export default function BehavioralAnalysisOverlay({
   const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const blackFrameCountRef = useRef(0);
   const noFaceFrameCountRef = useRef(0);
+  const frozenFrameCountRef = useRef(0);
+  const previousFrameSignatureRef = useRef<number | null>(null);
   const faceDetectorRef = useRef<any>(null);
   const violationReportedRef = useRef(false);
   const onViolationRef = useRef(onViolation);
@@ -112,12 +114,20 @@ export default function BehavioralAnalysisOverlay({
     if (!isRecording || !hasPermission) return;
     const BLACK_FRAME_THRESHOLD = 4;
     const NO_FACE_FRAME_THRESHOLD = 6;
+    const FROZEN_FRAME_THRESHOLD = 15;
 
     // Simulated behavioral analysis (in production, use ML model like TensorFlow.js)
     analysisIntervalRef.current = setInterval(async () => {
       if (videoRef.current && canvasRef.current && !violationReportedRef.current) {
         const video = videoRef.current;
         const canvas = canvasRef.current;
+        const stream = video.srcObject as MediaStream | null;
+        const primaryTrack = stream?.getVideoTracks?.()[0];
+
+        if (!primaryTrack || primaryTrack.readyState !== 'live' || primaryTrack.muted || !primaryTrack.enabled) {
+          reportViolation('Camera feed stopped, muted, or disabled during the interview.');
+          return;
+        }
 
         if (!video.videoWidth || !video.videoHeight || video.paused || video.ended) {
           reportViolation('Camera feed is not active.');
@@ -146,6 +156,15 @@ export default function BehavioralAnalysisOverlay({
 
           const averageBrightness = brightness / Math.max(1, samples);
           const variance = brightnessSquared / Math.max(1, samples) - averageBrightness * averageBrightness;
+          const frameSignature = Math.round(averageBrightness * 100) + Math.round(variance);
+
+          if (previousFrameSignatureRef.current !== null && Math.abs(frameSignature - previousFrameSignatureRef.current) <= 1) {
+            frozenFrameCountRef.current += 1;
+          } else {
+            frozenFrameCountRef.current = 0;
+          }
+          previousFrameSignatureRef.current = frameSignature;
+
           setCameraHealth({
             brightness: Math.round(averageBrightness),
             variance: Math.round(variance),
@@ -163,6 +182,12 @@ export default function BehavioralAnalysisOverlay({
           if (blackFrameCountRef.current >= BLACK_FRAME_THRESHOLD) {
             reportViolation('Camera turned black or appears blocked during the interview.');
             blackFrameCountRef.current = 0;
+            return;
+          }
+
+          if (frozenFrameCountRef.current >= FROZEN_FRAME_THRESHOLD) {
+            reportViolation('Camera feed froze during the interview.');
+            frozenFrameCountRef.current = 0;
             return;
           }
 
@@ -232,6 +257,8 @@ export default function BehavioralAnalysisOverlay({
       }
       blackFrameCountRef.current = 0;
       noFaceFrameCountRef.current = 0;
+      frozenFrameCountRef.current = 0;
+      previousFrameSignatureRef.current = null;
     };
   }, [isRecording, hasPermission, onMetricsUpdate, reportViolation]);
 
