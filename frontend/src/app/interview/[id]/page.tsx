@@ -42,6 +42,7 @@ export default function InterviewRoom() {
     const proctorViolationRef = useRef(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const answerAudioChunksRef = useRef<Blob[]>([]);
+    const isProctoredInterview = Boolean(interview?.behavioralAnalysis?.isEnabled);
 
     useEffect(() => {
         const fetchSessionData = async () => {
@@ -131,7 +132,7 @@ export default function InterviewRoom() {
     }, [timeLeftSeconds, interview]);
 
     useEffect(() => {
-        if (!interview || interview.status === 'completed') {
+        if (!interview || interview.status === 'completed' || !isProctoredInterview) {
             return;
         }
 
@@ -150,10 +151,10 @@ export default function InterviewRoom() {
             window.removeEventListener('beforeunload', onBeforeUnload);
             window.removeEventListener('pagehide', onBeforeUnload);
         };
-    }, [interview]);
+    }, [interview, isProctoredInterview]);
 
     useEffect(() => {
-        if (!interview || interview.status === 'completed') {
+        if (!interview || interview.status === 'completed' || !isProctoredInterview) {
             return;
         }
 
@@ -191,9 +192,13 @@ export default function InterviewRoom() {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             window.removeEventListener('blur', handleWindowBlur);
         };
-    }, [id, interview, router]);
+    }, [id, interview, isProctoredInterview, router]);
 
     useEffect(() => {
+        if (!isProctoredInterview) {
+            return;
+        }
+
         return () => {
             if (!id || hasFinalizedRef.current || !canAbandonOnUnmountRef.current) {
                 return;
@@ -201,7 +206,7 @@ export default function InterviewRoom() {
             hasFinalizedRef.current = true;
             finishWithBeacon('abandoned');
         };
-    }, [id]);
+    }, [id, isProctoredInterview]);
 
     const submitCurrentAnswer = async (answerText: string) => {
         if (!interview || !answerText.trim()) {
@@ -501,7 +506,7 @@ export default function InterviewRoom() {
     return (
         <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden relative">
             <BehavioralAnalysisOverlay
-                isEnabled={Boolean(interview.behavioralAnalysis?.isEnabled)}
+                isEnabled={isProctoredInterview}
                 isRecording={!finishing && interview.status !== 'completed'}
                 onMetricsUpdate={handleBehavioralMetricsUpdate}
                 onViolation={handleBehavioralViolation}

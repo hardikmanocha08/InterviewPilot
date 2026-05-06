@@ -192,16 +192,16 @@ export default function InterviewSetup() {
                         <div className="flex items-center space-x-3 pt-2">
                             <input
                                 type="checkbox"
-                                id="behavioralAnalysis"
+                                id="proctoredInterview"
                                 checked={formData.enableBehavioralAnalysis}
                                 onChange={(e) => setFormData({ ...formData, enableBehavioralAnalysis: e.target.checked })}
                                 className="w-4 h-4 rounded border-border bg-background cursor-pointer accent-primary"
                             />
-                            <label htmlFor="behavioralAnalysis" className="text-xs sm:text-sm font-medium text-white cursor-pointer flex-1">
-                                📹 Enable Behavioral Analysis
+                            <label htmlFor="proctoredInterview" className="text-xs sm:text-sm font-medium text-white cursor-pointer flex-1">
+                                Proctored Interview
                             </label>
                         </div>
-                        <p className="text-xs text-text-muted ml-7">Real-time analysis of eye contact, confidence, and communication (webcam required).</p>
+                        <p className="text-xs text-text-muted ml-7">Requires webcam access. Closing the tab, switching away, or turning off video will end the interview.</p>
                     </div>
 
                     <div>

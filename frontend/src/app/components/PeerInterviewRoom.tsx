@@ -335,8 +335,14 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const startPcmRelay = useCallback((stream: MediaStream) => {
     const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
     const audioContext = new AudioContextCtor();
+
+    // Use a smaller buffer + schedule cadence closer to real-time.
+    // This reduces chunking artifacts/crackling caused by large/irregular packets.
+    const bufferSize = 1024;
+
     const source = audioContext.createMediaStreamSource(stream);
-    const processor = audioContext.createScriptProcessor(4096, 1, 1);
+    const processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
+
     const silentGain = audioContext.createGain();
     silentGain.gain.value = 0;
 
@@ -352,11 +358,18 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
 
     processor.onaudioprocess = (event) => {
       const now = Date.now();
-      if (pcmPacketSendingRef.current || now - lastPcmPacketAtRef.current < 220) {
+
+      // ~60 FPS cadence => 16-20ms per packet for smoother real-time feel.
+      // ScriptProcessor callback period is not perfect, so we gate sending by time.
+      const minIntervalMs = 40;
+
+      if (pcmPacketSendingRef.current || now - lastPcmPacketAtRef.current < minIntervalMs) {
         return;
       }
 
       const input = event.inputBuffer.getChannelData(0);
+
+      // Downmix already mono. Convert to int16 PCM base64.
       const packetData = floatSamplesToBase64Pcm(input);
       lastPcmPacketAtRef.current = now;
       pcmPacketSendingRef.current = true;
