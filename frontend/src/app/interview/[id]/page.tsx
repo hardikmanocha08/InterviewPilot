@@ -166,11 +166,14 @@ export default function InterviewRoom() {
             hasFinalizedRef.current = true;
             setFinishing(true);
             alert(`Interview stopped: ${reason}`);
+            finishWithBeacon('abandoned');
             api.post(`/interviews/${id}/finish`, { endedReason: 'abandoned' })
                 .catch((error) => {
                     console.error('Failed to finish after focus violation:', error);
+                    finishWithBeacon('abandoned');
                 })
                 .finally(() => {
+                    setTimeout(() => finishWithBeacon('abandoned'), 300);
                     router.replace(`/dashboard/history/${id}`);
                 });
         };
@@ -353,11 +356,14 @@ export default function InterviewRoom() {
         hasFinalizedRef.current = true;
         setFinishing(true);
         alert(`Interview stopped: ${reason}`);
+        finishWithBeacon('abandoned');
         try {
             await api.post(`/interviews/${id}/finish`, { endedReason: 'abandoned' });
         } catch (error) {
             console.error('Failed to finish after proctor violation:', error);
+            finishWithBeacon('abandoned');
         } finally {
+            setTimeout(() => finishWithBeacon('abandoned'), 300);
             router.replace(`/dashboard/history/${id}`);
         }
     }, [id, router]);
