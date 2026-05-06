@@ -56,6 +56,7 @@ export default function BehavioralAnalysisOverlay({
   const stalledVideoTicksRef = useRef(0);
   const lastVideoFrameAtRef = useRef<number>(Date.now());
   const frameCallbackHandleRef = useRef<number | null>(null);
+  const hasFrameCallbackSupportRef = useRef(false);
   const faceDetectorRef = useRef<any>(null);
   const violationReportedRef = useRef(false);
   const onViolationRef = useRef(onViolation);
@@ -117,11 +118,11 @@ export default function BehavioralAnalysisOverlay({
 
   useEffect(() => {
     if (!isRecording || !hasPermission) return;
-    const BLACK_FRAME_THRESHOLD = 4;
-    const NO_FACE_FRAME_THRESHOLD = 6;
-    const FROZEN_FRAME_THRESHOLD = 15;
-    const STALLED_VIDEO_TICKS_THRESHOLD = 8;
-    const FRAME_WATCHDOG_TIMEOUT_MS = 2500;
+    const BLACK_FRAME_THRESHOLD = 12;
+    const NO_FACE_FRAME_THRESHOLD = 18;
+    const FROZEN_FRAME_THRESHOLD = 30;
+    const STALLED_VIDEO_TICKS_THRESHOLD = 20;
+    const FRAME_WATCHDOG_TIMEOUT_MS = 5000;
 
     const scheduleVideoFrameWatchdog = () => {
       if (!videoRef.current || violationReportedRef.current) {
@@ -131,8 +132,10 @@ export default function BehavioralAnalysisOverlay({
         requestVideoFrameCallback?: (callback: () => void) => number;
       };
       if (!videoEl.requestVideoFrameCallback) {
+        hasFrameCallbackSupportRef.current = false;
         return;
       }
+      hasFrameCallbackSupportRef.current = true;
       frameCallbackHandleRef.current = videoEl.requestVideoFrameCallback(() => {
         lastVideoFrameAtRef.current = Date.now();
         scheduleVideoFrameWatchdog();
@@ -176,7 +179,7 @@ export default function BehavioralAnalysisOverlay({
           return;
         }
 
-        if (Date.now() - lastVideoFrameAtRef.current > FRAME_WATCHDOG_TIMEOUT_MS) {
+        if (hasFrameCallbackSupportRef.current && Date.now() - lastVideoFrameAtRef.current > FRAME_WATCHDOG_TIMEOUT_MS) {
           setCameraWarning('Warning: no live camera frames detected.');
           reportViolation('Camera stopped producing live frames during the interview.');
           return;
@@ -224,9 +227,9 @@ export default function BehavioralAnalysisOverlay({
             status: 'Camera active',
           });
 
-          const isNearBlack = averageBrightness < 35;
-          const isFlatFrame = variance < 10;
-          if (isNearBlack || isFlatFrame) {
+          const isNearBlack = averageBrightness < 22;
+          const isFlatAndDark = variance < 8 && averageBrightness < 45;
+          if (isNearBlack || isFlatAndDark) {
             blackFrameCountRef.current += 1;
             setCameraWarning('Warning: camera feed looks black/blank.');
           } else {
@@ -248,23 +251,23 @@ export default function BehavioralAnalysisOverlay({
 
           const FaceDetectorCtor = (window as any).FaceDetector;
           if (!FaceDetectorCtor) {
-            reportViolation('Face detection is not supported in this browser. Please use a supported browser for proctored interviews.');
-            return;
-          }
+            noFaceFrameCountRef.current = 0;
+          } else {
+            if (!faceDetectorRef.current) {
+              faceDetectorRef.current = new FaceDetectorCtor({ fastMode: true, maxDetectedFaces: 1 });
+            }
 
-          if (!faceDetectorRef.current) {
-            faceDetectorRef.current = new FaceDetectorCtor({ fastMode: true, maxDetectedFaces: 1 });
-          }
-
-          try {
-            const faces = await faceDetectorRef.current.detect(canvas);
-            if (!faces.length) {
-              noFaceFrameCountRef.current += 1;
-            } else {
+            try {
+              const faces = await faceDetectorRef.current.detect(canvas);
+              if (!faces.length) {
+                noFaceFrameCountRef.current += 1;
+              } else {
+                noFaceFrameCountRef.current = 0;
+              }
+            } catch {
+              // Detector occasionally fails transiently; avoid false violation spikes.
               noFaceFrameCountRef.current = 0;
             }
-          } catch {
-            noFaceFrameCountRef.current += 1;
           }
 
           if (noFaceFrameCountRef.current >= NO_FACE_FRAME_THRESHOLD) {
@@ -317,6 +320,7 @@ export default function BehavioralAnalysisOverlay({
       previousVideoTimeRef.current = null;
       stalledVideoTicksRef.current = 0;
       frameCallbackHandleRef.current = null;
+      hasFrameCallbackSupportRef.current = false;
       setCameraWarning('');
     };
   }, [isRecording, hasPermission, onMetricsUpdate, reportViolation]);
