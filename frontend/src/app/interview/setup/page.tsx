@@ -175,20 +175,31 @@ export default function InterviewSetup() {
                     </div>
 
                     <div className="pt-2 border-t border-border space-y-3">
-                        <div className="flex items-center space-x-3">
-                            <input
-                                type="checkbox"
-                                id="peerMode"
-                                checked={formData.peerMode}
-                                onChange={(e) => setFormData({ ...formData, peerMode: e.target.checked })}
-                                className="w-4 h-4 rounded border-border bg-background cursor-pointer accent-primary"
-                            />
-                            <label htmlFor="peerMode" className="text-xs sm:text-sm font-medium text-white cursor-pointer flex-1">
-                                🤝 Peer Mock Interview
-                            </label>
+                        {/* Peer mock interview toggle as a separate button (no checkbox) */}
+                        <div className="pt-1">
+                            <button
+                                type="button"
+                                onClick={() => setFormData((prev) => ({ ...prev, peerMode: !prev.peerMode }))}
+                                className={`w-full flex items-center justify-between rounded-lg border px-4 py-3 text-sm transition-colors ${
+                                    formData.peerMode
+                                        ? 'border-primary/50 bg-primary/10 text-primary'
+                                        : 'border-border bg-background text-text-muted hover:border-primary/50 hover:text-white'
+                                }`}
+                            >
+                                <span className="font-medium flex items-center gap-2">
+                                    <span aria-hidden>🤝</span>
+                                    Peer Mock Interview
+                                </span>
+                                <span className="text-xs font-semibold">
+                                    {formData.peerMode ? 'Enabled' : 'Disabled'}
+                                </span>
+                            </button>
+                            <p className="text-xs text-text-muted mt-2 ml-1">
+                                Interview with another candidate. One acts as interviewer, one as candidate.
+                            </p>
                         </div>
-                        <p className="text-xs text-text-muted ml-7">Interview with another candidate. One acts as interviewer, one as candidate.</p>
 
+                        {/* Proctored interview (webcam) toggle remains a checkbox for now */}
                         <div className="flex items-center space-x-3 pt-2">
                             <input
                                 type="checkbox"
@@ -203,6 +214,7 @@ export default function InterviewSetup() {
                         </div>
                         <p className="text-xs text-text-muted ml-7">Requires webcam access. Closing the tab, switching away, or turning off video will end the interview.</p>
                     </div>
+
 
                     <div>
                         <label className="flex items-center space-x-1.5 sm:space-x-2 text-xs sm:text-sm font-medium text-white mb-1.5 sm:mb-2">

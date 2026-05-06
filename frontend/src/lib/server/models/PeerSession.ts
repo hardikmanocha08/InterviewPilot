@@ -53,8 +53,11 @@ export interface IPeerSession extends Document {
     strengths: string[];
     improvements: string[];
   };
+  visibility?: 'public' | 'private';
+  joinCodeHash?: string;
   isAIPaired: boolean; // true if one side is AI
 }
+
 
 const peerSessionSchema = new mongoose.Schema<IPeerSession>(
   {
@@ -193,11 +196,21 @@ const peerSessionSchema = new mongoose.Schema<IPeerSession>(
       strengths: [String],
       improvements: [String],
     },
+    visibility: {
+      type: String,
+      enum: ['public', 'private'],
+      default: 'public',
+    },
+    joinCodeHash: {
+      type: String,
+      default: undefined,
+    },
     isAIPaired: {
       type: Boolean,
       default: false,
     },
   },
+
   {
     timestamps: true,
   }
