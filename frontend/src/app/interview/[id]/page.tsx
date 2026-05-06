@@ -159,23 +159,26 @@ export default function InterviewRoom() {
         }
 
         const endForFocusViolation = (reason: string) => {
-            if (hasFinalizedRef.current || proctorViolationRef.current) {
+            if (hasFinalizedRef.current || proctorViolationRef.current || !id) {
                 return;
             }
+
             proctorViolationRef.current = true;
             hasFinalizedRef.current = true;
             setFinishing(true);
             alert(`Interview stopped: ${reason}`);
+
             finishWithBeacon('abandoned');
-            api.post(`/interviews/${id}/finish`, { endedReason: 'abandoned' })
-                .catch((error) => {
-                    console.error('Failed to finish after focus violation:', error);
-                    finishWithBeacon('abandoned');
-                })
-                .finally(() => {
-                    setTimeout(() => finishWithBeacon('abandoned'), 300);
-                    router.replace(`/dashboard/history/${id}`);
-                });
+            void Promise.race([
+                api.post(`/interviews/${id}/finish`, { endedReason: 'abandoned' }),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('finish request timeout')), 2500)),
+            ]).catch((error) => {
+                console.error('Failed to finish after focus violation:', error);
+                finishWithBeacon('abandoned');
+            });
+
+            setTimeout(() => finishWithBeacon('abandoned'), 300);
+            router.replace(`/dashboard/history/${id}`);
         };
 
         const handleVisibilityChange = () => {
@@ -348,25 +351,33 @@ export default function InterviewRoom() {
         setInterview((current: any) => current ? { ...current, peerSessionId: sessionId } : current);
     }, []);
 
-    const handleBehavioralViolation = useCallback(async (reason: string) => {
-        if (proctorViolationRef.current || !id) {
+    const finalizeProctorViolation = useCallback((reason: string) => {
+        if (!id || proctorViolationRef.current || hasFinalizedRef.current) {
             return;
         }
+
         proctorViolationRef.current = true;
         hasFinalizedRef.current = true;
         setFinishing(true);
         alert(`Interview stopped: ${reason}`);
+
         finishWithBeacon('abandoned');
-        try {
-            await api.post(`/interviews/${id}/finish`, { endedReason: 'abandoned' });
-        } catch (error) {
+        // Do not block UX on a potentially hanging request.
+        void Promise.race([
+            api.post(`/interviews/${id}/finish`, { endedReason: 'abandoned' }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('finish request timeout')), 2500)),
+        ]).catch((error) => {
             console.error('Failed to finish after proctor violation:', error);
             finishWithBeacon('abandoned');
-        } finally {
-            setTimeout(() => finishWithBeacon('abandoned'), 300);
-            router.replace(`/dashboard/history/${id}`);
-        }
+        });
+
+        setTimeout(() => finishWithBeacon('abandoned'), 300);
+        router.replace(`/dashboard/history/${id}`);
     }, [id, router]);
+
+    const handleBehavioralViolation = useCallback(async (reason: string) => {
+        finalizeProctorViolation(reason);
+    }, [finalizeProctorViolation]);
 
     const handlePeerFinish = useCallback(() => {
         void handleFinishInterview('manual');
