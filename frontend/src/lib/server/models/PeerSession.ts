@@ -1,9 +1,9 @@
 import mongoose, { Document, Model } from 'mongoose';
 
 export interface IPeerSession extends Document {
-  candidateId: mongoose.Types.ObjectId;
-  interviewerId: mongoose.Types.ObjectId;
-  candidateInterviewId: mongoose.Types.ObjectId;
+  candidateId?: mongoose.Types.ObjectId;
+  interviewerId?: mongoose.Types.ObjectId;
+  candidateInterviewId?: mongoose.Types.ObjectId;
   interviewerInterviewId?: mongoose.Types.ObjectId;
   status: 'waiting' | 'active' | 'completed';
   role: string;
@@ -63,7 +63,6 @@ const peerSessionSchema = new mongoose.Schema<IPeerSession>(
   {
     candidateId: {
       type: mongoose.Schema.Types.ObjectId,
-      required: true,
       ref: 'User',
     },
     interviewerId: {
@@ -72,7 +71,6 @@ const peerSessionSchema = new mongoose.Schema<IPeerSession>(
     },
     candidateInterviewId: {
       type: mongoose.Schema.Types.ObjectId,
-      required: true,
       ref: 'Interview',
     },
     interviewerInterviewId: {
