@@ -23,7 +23,9 @@ interface PeerLobbyProps {
   role: string;
   experienceLevel: string;
   peerRole: 'interviewer' | 'interviewee';
+  visibility?: 'public' | 'private';
 }
+
 
 export default function PeerLobby({ onJoinSession, interviewId, role, experienceLevel, peerRole }: PeerLobbyProps) {
   const [sessions, setSessions] = useState<PeerSession[]>([]);
@@ -64,12 +66,14 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
   const handleCreateSession = async () => {
     try {
       setRefreshing(true);
+      const visibility = peerRole === 'interviewee' ? 'private' : 'public';
       const res = await api.post('/peer-sessions', {
         interviewId,
         role,
         experienceLevel,
+        visibility,
       });
-      setOwnSession(res.data);
+      setOwnSession(res.data.session || res.data);
       setError(null);
     } catch (err) {
       console.error('Failed to create peer session:', err);

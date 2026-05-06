@@ -17,6 +17,7 @@ export default function InterviewSetup() {
         interviewMode: 'timed',
         enableBehavioralAnalysis: false,
         peerMode: false,
+        peerVisibility: 'public',
     });
     const [loading, setLoading] = useState(false);
     const router = useRouter();
@@ -198,6 +199,46 @@ export default function InterviewSetup() {
                                 Interview with another candidate. One acts as interviewer, one as candidate.
                             </p>
                         </div>
+
+                        {formData.peerMode && (
+                            <div className="pt-2">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs sm:text-sm font-medium text-white">Room type</span>
+                                    <span className="text-xs text-text-muted">{formData.peerVisibility}</span>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData((prev) => ({ ...prev, peerVisibility: 'public' }))}
+                                        className={`w-full px-4 py-3 rounded-lg border text-sm transition-colors ${
+                                            formData.peerVisibility === 'public'
+                                                ? 'border-primary/50 bg-primary/10 text-primary'
+                                                : 'border-border bg-background text-text-muted hover:border-primary/50 hover:text-white'
+                                        }`}
+                                    >
+                                        Public
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData((prev) => ({ ...prev, peerVisibility: 'private' }))}
+                                        className={`w-full px-4 py-3 rounded-lg border text-sm transition-colors ${
+                                            formData.peerVisibility === 'private'
+                                                ? 'border-primary/50 bg-primary/10 text-primary'
+                                                : 'border-border bg-background text-text-muted hover:border-primary/50 hover:text-white'
+                                        }`}
+                                    >
+                                        Private
+                                    </button>
+                                </div>
+
+                                <p className="text-xs text-text-muted mt-2 ml-1">
+                                    {formData.peerVisibility === 'private'
+                                        ? 'Candidate creates a room with an auto-generated code. Interviewer joins using that code.'
+                                        : 'Existing behavior: interviewer finds a waiting room.'}
+                                </p>
+                            </div>
+                        )}
 
                         {/* Proctored interview (webcam) toggle remains a checkbox for now */}
                         <div className="flex items-center space-x-3 pt-2">
