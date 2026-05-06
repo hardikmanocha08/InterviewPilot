@@ -159,26 +159,7 @@ export default function InterviewRoom() {
         }
 
         const endForFocusViolation = (reason: string) => {
-            if (hasFinalizedRef.current || proctorViolationRef.current || !id) {
-                return;
-            }
-
-            proctorViolationRef.current = true;
-            hasFinalizedRef.current = true;
-            setFinishing(true);
-            alert(`Interview stopped: ${reason}`);
-
-            finishWithBeacon('abandoned');
-            void Promise.race([
-                api.post(`/interviews/${id}/finish`, { endedReason: 'abandoned' }),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('finish request timeout')), 2500)),
-            ]).catch((error) => {
-                console.error('Failed to finish after focus violation:', error);
-                finishWithBeacon('abandoned');
-            });
-
-            setTimeout(() => finishWithBeacon('abandoned'), 300);
-            router.replace(`/dashboard/history/${id}`);
+            finalizeProctorViolation(reason);
         };
 
         const handleVisibilityChange = () => {
@@ -198,7 +179,7 @@ export default function InterviewRoom() {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             window.removeEventListener('blur', handleWindowBlur);
         };
-    }, [id, interview, isProctoredInterview, router]);
+    }, [finalizeProctorViolation, interview, isProctoredInterview]);
 
     useEffect(() => {
         if (!isProctoredInterview) {
@@ -372,7 +353,13 @@ export default function InterviewRoom() {
         });
 
         setTimeout(() => finishWithBeacon('abandoned'), 300);
-        router.replace(`/dashboard/history/${id}`);
+        const historyPath = `/dashboard/history/${id}`;
+        router.replace(historyPath);
+        setTimeout(() => {
+            if (window.location.pathname.includes(`/interview/${id}`)) {
+                window.location.replace(historyPath);
+            }
+        }, 200);
     }, [id, router]);
 
     const handleBehavioralViolation = useCallback(async (reason: string) => {
