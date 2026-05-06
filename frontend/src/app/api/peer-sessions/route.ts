@@ -25,7 +25,6 @@ const hashJoinCode = (code: string) => {
   return `h${Math.abs(hash)}_${normalized.length}`;
 };
 
-// GET available peers waiting for interview
 export async function GET(req: NextRequest) {
   await connectDB();
 
@@ -70,7 +69,6 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST create new peer session
 export async function POST(req: NextRequest) {
   await connectDB();
 
@@ -80,9 +78,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { role, experienceLevel, interviewId, visibility, peerRole } = await req.json();
+    const body = await req.json();
+    const { role, experienceLevel, interviewId, visibility, peerRole } = body;
 
-    console.log('[POST /peer-sessions] Received:', { role, experienceLevel, interviewId, visibility, peerRole });
+    console.log('[peer-sessions POST] body:', JSON.stringify(body, null, 2));
+    console.log('[peer-sessions POST] visibility =', visibility, 'typeof =', typeof visibility);
 
     const interview = await Interview.findById(interviewId);
     if (!interview || interview.user.toString() !== user._id.toString()) {
@@ -98,23 +98,26 @@ export async function POST(req: NextRequest) {
     });
 
     if (existingSession) {
-      console.log('[POST /peer-sessions] Returning existing session:', existingSession._id);
-      let joinCode = undefined;
+      console.log('[peer-sessions POST] existingSession found:', existingSession._id, 'visibility:', existingSession.visibility);
+      let joinCode: string | undefined = undefined;
       if (existingSession.visibility === 'private') {
         joinCode = randomCode(8);
         existingSession.joinCodeHash = hashJoinCode(joinCode);
         await existingSession.save();
-        console.log('[POST /peer-sessions] Generated new join code for existing session');
+        console.log('[peer-sessions POST] regenerated joinCode for existing:', joinCode);
       }
       return NextResponse.json({ session: existingSession, joinCode });
     }
 
-    const sessionData: any = {
+    const effectiveVisibility = visibility === 'private' ? 'private' : 'public';
+    console.log('[peer-sessions POST] effectiveVisibility:', effectiveVisibility);
+
+    const sessionData: Record<string, any> = {
       status: 'waiting',
       role,
       experienceLevel,
       isAIPaired: false,
-      visibility: visibility || 'public',
+      visibility: effectiveVisibility,
     };
 
     if (peerRole === 'interviewer') {
@@ -125,26 +128,21 @@ export async function POST(req: NextRequest) {
       sessionData.candidateInterviewId = interviewId;
     }
 
-    console.log('[POST /peer-sessions] sessionData:', { ...sessionData, interviewerId: sessionData.interviewerId?.toString(), candidateId: sessionData.candidateId?.toString() });
+    let joinCode: string | undefined = undefined;
 
-    if (visibility === 'private') {
-      const joinCode = randomCode(8);
+    if (effectiveVisibility === 'private') {
+      joinCode = randomCode(8);
       sessionData.joinCodeHash = hashJoinCode(joinCode);
-      console.log('[POST /peer-sessions] Private room - generated joinCode:', joinCode, 'hash:', sessionData.joinCodeHash);
-
-      const peerSession = new PeerSession(sessionData);
-      await peerSession.save();
-      console.log('[POST /peer-sessions] Created session:', peerSession._id);
-      return NextResponse.json({ session: peerSession, joinCode });
+      console.log('[peer-sessions POST] generating joinCode:', joinCode);
     }
 
     const peerSession = new PeerSession(sessionData);
     await peerSession.save();
-    console.log('[POST /peer-sessions] Created public session:', peerSession._id);
-    return NextResponse.json({ session: peerSession });
+    console.log('[peer-sessions POST] created session:', peerSession._id, 'joinCode:', joinCode);
+
+    return NextResponse.json({ session: peerSession, joinCode });
   } catch (err: any) {
-    console.error('[POST /peer-sessions] Error creating peer session:', err);
-    console.error('[POST /peer-sessions] Error stack:', err.stack);
+    console.error('[peer-sessions POST] Error:', err);
     return NextResponse.json({ message: 'Failed to create peer session', error: err.message }, { status: 500 });
   }
 }

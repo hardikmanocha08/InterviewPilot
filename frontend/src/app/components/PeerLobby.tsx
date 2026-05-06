@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
 import { FiUsers, FiPlus, FiArrowRight, FiLoader, FiAlertCircle, FiCopy, FiRefreshCw } from 'react-icons/fi';
@@ -40,6 +40,8 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
   const [generatedCode, setGeneratedCode] = useState('');
   const [copied, setCopied] = useState(false);
 
+  const currentSessionIdRef = useRef<string | null>(null);
+
   const isPrivate = visibility === 'private';
 
   const fetchPeerSessions = async () => {
@@ -49,42 +51,22 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
       const availableSessions = Array.isArray(data) ? data : data.availableSessions || [];
       const currentOwnSession = Array.isArray(data) ? null : data.ownSession || null;
 
-      // Filter available sessions by visibility
       const filtered = availableSessions.filter((s: PeerSession) =>
         isPrivate ? s.visibility === 'private' : s.visibility !== 'private'
       );
 
       setSessions(filtered);
 
-      // Set own session if it matches our current mode
-      if (currentOwnSession) {
-        const matches = isPrivate
-          ? currentOwnSession.visibility === 'private'
-          : currentOwnSession.visibility !== 'private';
-        if (matches) {
+      if (currentOwnSession && currentSessionIdRef.current) {
+        if (currentOwnSession._id === currentSessionIdRef.current) {
           setOwnSession(currentOwnSession);
-          // Restore generated code if it's a private interviewer session
-          if (isPrivate && peerRole === 'interviewer' && currentOwnSession.status === 'waiting') {
-            // Code will be shown if we have it, or will show "Generating..."
+          if (currentOwnSession.status === 'active') {
+            onJoinSession(currentOwnSession._id);
           }
-        } else {
-          setOwnSession(null);
         }
-      } else {
-        setOwnSession(null);
       }
 
       setError(null);
-
-      // Auto-join when session becomes active
-      if (currentOwnSession?.status === 'active') {
-        const matches = isPrivate
-          ? currentOwnSession.visibility === 'private'
-          : currentOwnSession.visibility !== 'private';
-        if (matches) {
-          onJoinSession(currentOwnSession._id);
-        }
-      }
     } catch (err) {
       console.error('Failed to fetch peer sessions:', err);
       setError('Failed to load available peers');
@@ -105,30 +87,42 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
       setRefreshing(true);
       setError(null);
 
-      console.log('[PeerLobby] Creating session with:', { interviewId, role, experienceLevel, visibility, peerRole });
-
-      const res = await api.post('/peer-sessions', {
+      const payload = {
         interviewId,
         role,
         experienceLevel,
-        visibility,
+        visibility: visibility || 'public',
         peerRole,
-      });
+      };
 
-      console.log('[PeerLobby] Full response:', JSON.stringify(res.data, null, 2));
+      console.log('[PeerLobby] POST /peer-sessions payload:', payload);
 
-      const session = res.data.session || res.data;
+      const res = await api.post('/peer-sessions', payload);
+
+      console.log('[PeerLobby] POST response status:', res.status);
+      console.log('[PeerLobby] POST response data:', JSON.stringify(res.data, null, 2));
+
+      const session = res.data?.session || res.data;
+      console.log('[PeerLobby] extracted session:', session);
+      console.log('[PeerLobby] joinCode from response:', res.data?.joinCode);
+
+      if (!session?._id) {
+        throw new Error('No session returned from server');
+      }
+
+      currentSessionIdRef.current = session._id;
       setOwnSession(session);
 
       if (isPrivate && peerRole === 'interviewer') {
-        const code = res.data.joinCode;
-        console.log('[PeerLobby] joinCode from response:', code);
+        const code = res.data?.joinCode;
+        console.log('[PeerLobby] isPrivate:', isPrivate, 'peerRole:', peerRole, 'code:', code);
         if (code) {
           setGeneratedCode(code);
+        } else {
+          console.warn('[PeerLobby] Private mode but NO joinCode in response!');
+          setError('Room created but join code not returned. Check server logs.');
         }
       }
-
-      setError(null);
     } catch (err: any) {
       console.error('[PeerLobby] Create session error:', err);
       console.error('[PeerLobby] Error response:', err.response?.data);
@@ -142,6 +136,7 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
     try {
       setRefreshing(true);
       await api.post(`/peer-sessions/${sessionId}/join`, { interviewId });
+      currentSessionIdRef.current = sessionId;
       onJoinSession(sessionId);
     } catch (err) {
       console.error('Failed to join session:', err);
@@ -174,6 +169,7 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
         throw new Error('Missing session id from server');
       }
 
+      currentSessionIdRef.current = sessionId;
       onJoinSession(sessionId);
     } catch (err: any) {
       console.error('Failed to join by code:', err);
@@ -190,7 +186,6 @@ export default function PeerLobby({ onJoinSession, interviewId, role, experience
     });
   };
 
-  // Determine who can create a room in this mode
   const canCreate = (isPrivate && peerRole === 'interviewer') || (!isPrivate && peerRole === 'interviewee');
 
   return (
