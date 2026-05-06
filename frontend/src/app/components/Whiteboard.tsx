@@ -1,7 +1,6 @@
 'use client';
 
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { FiMousePointer, FiPenTool, FiSquare, FiCircle, FiType, FiEraser, FiTrash2, FiMove, FiMinus } from 'react-icons/fi';
 
 type Tool = 'select' | 'pen' | 'rect' | 'circle' | 'text' | 'eraser' | 'line';
 
@@ -214,12 +213,12 @@ export default function Whiteboard({
   };
 
   const tools: { id: Tool; icon: React.ReactNode; label: string }[] = [
-    { id: 'pen', icon: <FiPenTool className="w-4 h-4" />, label: 'Pen' },
-    { id: 'line', icon: <FiMinus className="w-4 h-4" />, label: 'Line' },
-    { id: 'rect', icon: <FiSquare className="w-4 h-4" />, label: 'Rectangle' },
-    { id: 'circle', icon: <FiCircle className="w-4 h-4" />, label: 'Circle' },
-    { id: 'text', icon: <FiType className="w-4 h-4" />, label: 'Text' },
-    { id: 'eraser', icon: <FiEraser className="w-4 h-4" />, label: 'Eraser' },
+    { id: 'pen', icon: <span className="text-sm">✏️</span>, label: 'Pen' },
+    { id: 'line', icon: <span className="text-sm">╱</span>, label: 'Line' },
+    { id: 'rect', icon: <span className="text-sm">□</span>, label: 'Rectangle' },
+    { id: 'circle', icon: <span className="text-sm">○</span>, label: 'Circle' },
+    { id: 'text', icon: <span className="text-sm font-bold">T</span>, label: 'Text' },
+    { id: 'eraser', icon: <span className="text-sm">◻️</span>, label: 'Eraser' },
   ];
 
   const colors = ['#e2e8f0', '#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ec4899'];
@@ -278,7 +277,7 @@ export default function Whiteboard({
             className="p-2 text-red-400 hover:text-red-300 rounded transition-colors disabled:opacity-30"
             title="Clear all"
           >
-            <FiTrash2 className="w-4 h-4" />
+            <span className="text-sm">🗑️</span>
           </button>
         </div>
       </div>

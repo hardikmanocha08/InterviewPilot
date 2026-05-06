@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
-import { FiPlayCircle, FiBriefcase, FiStar, FiArrowLeft, FiUsers, FiClock, FiEye, FiEyeOff } from 'react-icons/fi';
+import { FiPlayCircle, FiBriefcase, FiStar, FiArrowLeft, FiUsers, FiClock } from 'react-icons/fi';
 
 export default function InterviewSetup() {
     const { user, token, logout } = useAuthStore();
@@ -357,7 +357,7 @@ export default function InterviewSetup() {
                                             : 'border-border bg-background text-text-muted hover:border-purple-500/50 hover:text-white'
                                     }`}
                                 >
-                                    <FiEye className="w-4 h-4" />
+                                    <span className="text-xs">🌐</span>
                                     Public
                                 </button>
                                 <button
@@ -369,7 +369,7 @@ export default function InterviewSetup() {
                                             : 'border-border bg-background text-text-muted hover:border-purple-500/50 hover:text-white'
                                     }`}
                                 >
-                                    <FiEyeOff className="w-4 h-4" />
+                                    <span className="text-xs">🔒</span>
                                     Private
                                 </button>
                             </div>

@@ -8,7 +8,7 @@ import PeerInterviewRoom from '@/app/components/PeerInterviewRoom';
 import PeerLobby from '@/app/components/PeerLobby';
 import CodeEditor from '@/app/components/CodeEditor';
 import { useTTS } from '@/app/hooks/useTTS';
-import { FiSend, FiCheckCircle, FiChevronRight, FiAlertCircle, FiBarChart2, FiThumbsUp, FiTrendingDown, FiXCircle, FiMic, FiMicOff, FiVolume2, FiVolumeX, FiCode, FiMessageSquare } from 'react-icons/fi';
+import { FiSend, FiCheckCircle, FiChevronRight, FiAlertCircle, FiBarChart2, FiThumbsUp, FiTrendingDown, FiXCircle, FiMic, FiMicOff } from 'react-icons/fi';
 
 type EndReason = 'manual' | 'timeout' | 'abandoned';
 
@@ -644,7 +644,7 @@ export default function InterviewRoom() {
                                     className="ml-2 p-1 rounded-full bg-primary/20 hover:bg-primary/30 text-primary transition-colors"
                                     title={speaking ? 'Stop speaking' : 'Read question aloud'}
                                 >
-                                    {speaking ? <FiVolumeX className="w-3.5 h-3.5" /> : <FiVolume2 className="w-3.5 h-3.5" />}
+                                    {speaking ? <span className="text-xs">🔇</span> : <span className="text-xs">🔊</span>}
                                 </button>
                             )}
                         </div>
@@ -746,7 +746,7 @@ export default function InterviewRoom() {
                                             : 'bg-background text-text-muted border border-border hover:border-primary/50'
                                     }`}
                                 >
-                                    {voiceMode ? <FiVolume2 className="w-3.5 h-3.5" /> : <FiVolumeX className="w-3.5 h-3.5" />}
+                                    {voiceMode ? <span className="text-xs">🔊</span> : <span className="text-xs">🔇</span>}
                                     Voice
                                 </button>
                                 <button
@@ -757,7 +757,7 @@ export default function InterviewRoom() {
                                             : 'bg-background text-text-muted border border-border hover:border-primary/50'
                                     }`}
                                 >
-                                    <FiCode className="w-3.5 h-3.5" />
+                                    <span className="text-xs">{`</>`}</span>
                                     Code
                                 </button>
                                 <button
@@ -768,7 +768,7 @@ export default function InterviewRoom() {
                                             : 'bg-background text-text-muted border border-border hover:border-primary/50'
                                     }`}
                                 >
-                                    <FiMessageSquare className="w-3.5 h-3.5" />
+                                    <span className="text-xs">💬</span>
                                     Text
                                 </button>
                             </div>

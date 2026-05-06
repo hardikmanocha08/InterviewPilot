@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '@/lib/api';
 import CodeEditor from '@/app/components/CodeEditor';
 import Whiteboard from '@/app/components/Whiteboard';
-import { FiMic, FiMicOff, FiPhoneOff, FiRefreshCw, FiSend, FiCode, FiLayout } from 'react-icons/fi';
+import { FiMic, FiMicOff, FiPhoneOff, FiRefreshCw, FiSend } from 'react-icons/fi';
 
 interface PeerInterviewRoomProps {
   sessionId: string;
@@ -871,7 +871,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
                 className="p-1.5 rounded bg-surface border border-border hover:border-primary text-text-muted hover:text-white transition-colors"
                 title={whiteboardMode ? 'Switch to code editor' : 'Switch to whiteboard'}
               >
-                {whiteboardMode ? <FiCode className="w-4 h-4" /> : <FiLayout className="w-4 h-4" />}
+                {whiteboardMode ? <span className="text-sm">{`</>`}</span> : <span className="text-sm">📐</span>}
               </button>
             </div>
             {!whiteboardMode && effectiveRole === 'interviewee' && (
