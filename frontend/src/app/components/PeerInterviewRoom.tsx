@@ -50,6 +50,8 @@ const rtcConfig: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
   ],
 };
 
@@ -626,29 +628,33 @@ sys.stderr = StringIO()
   const stopRemotePlayback = useCallback(() => {
     remotePlaybackSourceRef.current?.disconnect();
     remoteGainRef.current?.disconnect();
-    void remotePlaybackContextRef.current?.close();
     remotePlaybackSourceRef.current = null;
     remoteGainRef.current = null;
-    remotePlaybackContextRef.current = null;
     setRemotePlaybackReady(false);
   }, []);
 
   const startRemotePlayback = useCallback((stream: MediaStream) => {
     stopRemotePlayback();
-    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
-    const audioContext = new AudioContextCtor();
-    const source = audioContext.createMediaStreamSource(stream);
-    const gain = audioContext.createGain();
-    gain.gain.value = 1.1;
-    source.connect(gain).connect(audioContext.destination);
 
-    remotePlaybackContextRef.current = audioContext;
-    remotePlaybackSourceRef.current = source;
-    remoteGainRef.current = gain;
-    setRemotePlaybackReady(audioContext.state === 'running');
+    let audioContext = remotePlaybackContextRef.current;
+    if (!audioContext || audioContext.state === 'closed') {
+      const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+      audioContext = new AudioContextCtor();
+      remotePlaybackContextRef.current = audioContext;
+    }
+
     void audioContext.resume().then(() => {
+      console.log('[Audio] AudioContext resumed, state:', audioContext.state);
+      const source = audioContext.createMediaStreamSource(stream);
+      const gain = audioContext.createGain();
+      gain.gain.value = 2;
+      source.connect(gain).connect(audioContext.destination);
+      console.log('[Audio] Remote stream connected to destination');
+
+      remotePlaybackSourceRef.current = source;
+      remoteGainRef.current = gain;
       setRemotePlaybackReady(true);
-    });
+    }).catch((e) => console.error('[Audio] Failed to resume AudioContext:', e));
   }, [stopRemotePlayback]);
 
   const startRemoteMeter = useCallback((stream: MediaStream) => {
@@ -680,6 +686,7 @@ sys.stderr = StringIO()
     audioSenderRef.current = pc.addTransceiver('audio', { direction: 'sendrecv' }).sender;
 
     pc.onconnectionstatechange = () => {
+      console.log('[WebRTC] Connection state:', pc.connectionState);
       setConnectionState(pc.connectionState);
     };
 
@@ -692,11 +699,16 @@ sys.stderr = StringIO()
     pc.ontrack = (event) => {
       const remoteStream = event.streams[0];
       remoteStreamRef.current = remoteStream;
+      console.log('[WebRTC] ontrack fired, tracks:', event.streams[0].getTracks().map(t => `${t.kind}:${t.id}`));
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = remoteStream;
         remoteAudioRef.current.muted = false;
+        remoteAudioRef.current.autoplay = true;
         remoteAudioRef.current.volume = 1;
-        void remoteAudioRef.current.play().catch(() => {});
+        const playPromise = remoteAudioRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((e) => console.warn('[WebRTC] <audio> play() blocked:', e));
+        }
       }
       startRemoteMeter(remoteStream);
       startRemotePlayback(remoteStream);
@@ -749,6 +761,18 @@ sys.stderr = StringIO()
       startLocalMeter(stream);
       setMicActive(true);
       await patchSession({ micActive: true });
+
+      const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+      if (!remotePlaybackContextRef.current || remotePlaybackContextRef.current.state === 'closed') {
+        const ctx = new AudioContextCtor();
+        const silent = ctx.createOscillator();
+        const silentGain = ctx.createGain();
+        silentGain.gain.value = 0;
+        silent.connect(silentGain).connect(ctx.destination);
+        silent.start();
+        remotePlaybackContextRef.current = ctx;
+      }
+      void remotePlaybackContextRef.current.resume();
 
       if (effectiveRole === 'interviewer') {
         await createOffer();
@@ -906,6 +930,27 @@ sys.stderr = StringIO()
     });
   };
 
+  const debugAudio = () => {
+    const el = remoteAudioRef.current;
+    const ctx = remotePlaybackContextRef.current;
+    const stream = remoteStreamRef.current;
+    console.log('[Audio Debug]', {
+      remoteStreamExists: !!stream,
+      streamTracks: stream?.getTracks().map(t => ({ kind: t.kind, muted: t.muted, enabled: t.enabled, readyState: t.readyState })),
+      audioElementExists: !!el,
+      audioSrcObject: el?.srcObject ? 'yes' : 'no',
+      audioMuted: el?.muted,
+      audioVolume: el?.volume,
+      audioPaused: el?.paused,
+      audioReadyState: el?.readyState,
+      audioContextExists: !!ctx,
+      audioContextState: ctx?.state,
+      remotePlaybackReady,
+      connectionState,
+    });
+    alert(`Stream: ${stream ? 'yes' : 'no'} | Element muted: ${el?.muted} | Volume: ${el?.volume} | Context: ${ctx?.state || 'none'} | PC: ${connectionState}`);
+  };
+
   const interviewerMicActive = Boolean(session.interviewerMicActive);
   const intervieweeMicActive = Boolean(session.candidateMicActive);
   const interviewerLevel = effectiveRole === 'interviewer'
@@ -932,6 +977,8 @@ sys.stderr = StringIO()
 
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
+      <audio ref={remoteAudioRef} autoPlay playsInline style={{ position: 'fixed', left: 0, top: 0, width: '1px', height: '1px', opacity: 0, pointerEvents: 'none' }} />
+
       <div className="border-b border-border bg-surface px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase text-primary font-semibold">Peer Interview</p>
@@ -947,15 +994,24 @@ sys.stderr = StringIO()
           <span className="hidden sm:inline text-xs px-2 py-1 rounded border border-border text-text-muted">
             Audio: {connectionState}
           </span>
-          <button
-            onClick={playRemoteAudio}
-            className={`hidden sm:inline text-xs px-2 py-1 rounded border hover:text-white hover:border-primary ${remotePlaybackReady ? 'border-green-500/30 text-green-300 bg-green-500/10' : 'border-border text-text-muted'}`}
-          >
-            {remotePlaybackReady ? 'Audio enabled' : 'Enable audio'}
-          </button>
-          <span className={`hidden sm:inline text-xs px-2 py-1 rounded border ${relayPlaybackReady ? 'border-green-500/30 text-green-300 bg-green-500/10' : 'border-border text-text-muted'}`}>
-            Relay {relayPlaybackReady ? 'on' : 'ready'}
+          {!remotePlaybackReady && remoteStreamRef.current && (
+            <button
+              onClick={playRemoteAudio}
+              className="text-xs px-3 py-1.5 rounded border border-primary text-primary hover:bg-primary/10 animate-pulse"
+            >
+              Click to enable audio
+            </button>
+          )}
+          <span className={`hidden sm:inline text-xs px-2 py-1 rounded border ${remotePlaybackReady ? 'border-green-500/30 text-green-300 bg-green-500/10' : 'border-border text-text-muted'}`}>
+            Audio {remotePlaybackReady ? 'on' : 'off'}
           </span>
+          <button
+            onClick={debugAudio}
+            className="hidden sm:inline text-xs px-2 py-1 rounded border border-yellow-500/30 text-yellow-300 hover:bg-yellow-500/10"
+            title="Debug audio"
+          >
+            🔊 Debug
+          </button>
           <div className="hidden md:flex items-center gap-3">
             <MicLevel label="Interviewer" level={interviewerLevel} active={interviewerMicActive} />
             <MicLevel label="Interviewee" level={intervieweeLevel} active={intervieweeMicActive} />
