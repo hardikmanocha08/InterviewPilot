@@ -375,7 +375,7 @@ export default function InterviewSetup() {
                             </div>
                             <p className="text-xs text-text-muted mt-2">
                                 {peerForm.peerVisibility === 'public'
-                                    ? 'Create a public room. Interviewers can browse and join.'
+                                    ? 'Interviewees create an open room. Interviewers browse and pick who to interview.'
                                     : 'Interviewer creates a room with a code. Interviewee enters the code to join.'}
                             </p>
                         </div>

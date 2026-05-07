@@ -34,6 +34,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: `Unsupported language: ${language}` }, { status: 400 });
     }
 
+    console.log('[code/execute] Running:', { language: langConfig.language, version: langConfig.version, codeLength: code.length });
+
     const response = await fetch('https://emkc.org/api/v2/piston/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -41,37 +43,53 @@ export async function POST(req: NextRequest) {
         language: langConfig.language,
         version: langConfig.version,
         files: [{ content: code }],
+        stdin: '',
+        compile_timeout: 10000,
+        run_timeout: 10000,
       }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(20000),
     });
 
+    console.log('[code/execute] Piston response status:', response.status);
+
     const result = await response.json();
+    console.log('[code/execute] Piston result:', JSON.stringify(result).substring(0, 500));
 
     if (result.run) {
-      const output = result.run.stdout || result.run.stderr || '';
-      const error = result.run.compile?.stderr || result.run.compile?.stdout || '';
+      const stdout = result.run.stdout || '';
+      const stderr = result.run.stderr || '';
+      const compileOutput = result.run.compile?.output || '';
+      const compileError = result.run.compile?.error || '';
+      const exitCode = result.run.code;
+
+      const combinedOutput = [compileError, compileOutput, stdout, stderr].filter(Boolean).join('\n') || 'No output';
 
       if (interviewId) {
-        const interview = await Interview.findById(interviewId);
-        if (interview && interview.user.toString() === user._id.toString()) {
-          await Interview.findByIdAndUpdate(interviewId, {
-            $push: { questions: { questionText: `Code execution (${language})`, userAnswer: code, score: 0, feedback: '', strengths: [], weaknesses: [], improvement: '' } },
-          });
+        try {
+          const interview = await Interview.findById(interviewId);
+          if (interview && interview.user.toString() === user._id.toString()) {
+            await Interview.findByIdAndUpdate(interviewId, {
+              $push: { questions: { questionText: `Code execution (${language})`, userAnswer: code, score: 0, feedback: '', strengths: [], weaknesses: [], improvement: '' } },
+            });
+          }
+        } catch (dbErr) {
+          console.error('[code/execute] DB update failed:', dbErr);
         }
       }
 
       return NextResponse.json({
-        output: output.trim(),
-        error: error.trim(),
-        exitCode: result.run.code,
+        output: combinedOutput.trim(),
+        exitCode,
+        hasError: exitCode !== 0 || !!stderr,
       });
     }
 
-    return NextResponse.json({ error: 'Execution failed' }, { status: 500 });
+    console.error('[code/execute] No run result:', JSON.stringify(result));
+    return NextResponse.json({ error: result.message || result.error || 'Execution failed. Piston API returned no run result.' }, { status: 500 });
   } catch (err: any) {
-    console.error('Code execution error:', err);
+    console.error('[code/execute] Error:', err.message || err);
     return NextResponse.json({
-      error: err.name === 'TimeoutError' ? 'Execution timed out (15s limit)' : 'Failed to execute code',
+      error: err.name === 'TimeoutError' ? 'Execution timed out (20s limit)' : `Execution failed: ${err.message || 'Unknown error'}`,
     }, { status: 500 });
   }
 }

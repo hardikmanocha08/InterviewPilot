@@ -150,21 +150,33 @@ export default function InterviewRoom() {
             return;
         }
 
-        const onBeforeUnload = () => {
-            if (hasFinalizedRef.current) {
-                return;
+        let cameraChecked = false;
+
+        const checkCameraPermission = async () => {
+            if (cameraChecked) return;
+            cameraChecked = true;
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                stream.getTracks().forEach((track) => track.stop());
+            } catch (err) {
+                finalizeProctorViolation('Camera access denied. Proctored interviews require camera permission.');
             }
-            hasFinalizedRef.current = true;
-            finishWithBeacon('abandoned');
         };
 
-        window.addEventListener('beforeunload', onBeforeUnload);
-        window.addEventListener('pagehide', onBeforeUnload);
+        checkCameraPermission();
 
-        return () => {
-            window.removeEventListener('beforeunload', onBeforeUnload);
-            window.removeEventListener('pagehide', onBeforeUnload);
-        };
+        const interval = setInterval(() => {
+            if (navigator.permissions && navigator.permissions.query) {
+                navigator.permissions.query({ name: 'camera' as PermissionName }).then((result) => {
+                    if (result.state === 'denied') {
+                        finalizeProctorViolation('Camera access denied. Proctored interviews require camera permission.');
+                    }
+                }).catch(() => {});
+            }
+        }, 5000);
+
+        return () => clearInterval(interval);
     }, [interview, isProctoredInterview]);
 
     const finalizeProctorViolation = useCallback((reason: string) => {
@@ -196,34 +208,6 @@ export default function InterviewRoom() {
             }
         }, 200);
     }, [id, router]);
-
-    useEffect(() => {
-        if (!interview || interview.status === 'completed' || !isProctoredInterview) {
-            return;
-        }
-
-        const endForFocusViolation = (reason: string) => {
-            finalizeProctorViolation(reason);
-        };
-
-        const handleVisibilityChange = () => {
-            if (document.hidden) {
-                endForFocusViolation('Tab changed, minimized, or hidden.');
-            }
-        };
-
-        const handleWindowBlur = () => {
-            endForFocusViolation('Interview window lost focus.');
-        };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        window.addEventListener('blur', handleWindowBlur);
-
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-            window.removeEventListener('blur', handleWindowBlur);
-        };
-    }, [finalizeProctorViolation, interview, isProctoredInterview]);
 
     useEffect(() => {
         if (!isProctoredInterview) {
@@ -391,7 +375,13 @@ export default function InterviewRoom() {
         setCodeOutput('');
         try {
             const res = await api.post('/code/execute', { code, language });
-            setCodeOutput(res.data.output || res.data.error || 'No output');
+            if (res.data.error) {
+                setCodeOutput(res.data.error);
+            } else if (res.data.output) {
+                setCodeOutput(res.data.output);
+            } else {
+                setCodeOutput('No output');
+            }
         } catch (err: any) {
             setCodeOutput(err.response?.data?.error || err.response?.data?.message || 'Execution failed');
         } finally {
@@ -448,7 +438,7 @@ export default function InterviewRoom() {
                     }
                 } catch (error) {
                     console.error('Failed to transcribe answer:', error);
-                    alert('Microphone recording worked, but transcription failed. Check your STT provider settings.');
+                    alert(`Transcription failed: ${error instanceof Error ? error.message : 'STT provider error. Try again or type your answer.'}`);
                 } finally {
                     setTranscribingAnswer(false);
                 }

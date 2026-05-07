@@ -57,6 +57,8 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const [answer, setAnswer] = useState('');
   const [codeText, setCodeText] = useState('');
   const [whiteboardMode, setWhiteboardMode] = useState(false);
+  const [whiteboardElements, setWhiteboardElements] = useState<any[]>([]);
+  const whiteboardSyncRef = useRef(false);
   const [codeLanguage, setCodeLanguage] = useState('javascript');
   const [codeOutput, setCodeOutput] = useState('');
   const [codeRunning, setCodeRunning] = useState(false);
@@ -109,12 +111,27 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     return res.data.session as PeerSessionState;
   }, [sessionId]);
 
+  const syncWhiteboard = useCallback(async (els: any[]) => {
+    whiteboardSyncRef.current = true;
+    try {
+      await patchSession({ whiteboardElements: JSON.stringify(els) });
+    } finally {
+      setTimeout(() => { whiteboardSyncRef.current = false; }, 100);
+    }
+  }, [patchSession]);
+
   const handleRunCode = async (code: string, language: string) => {
     setCodeRunning(true);
     setCodeOutput('');
     try {
       const res = await api.post('/code/execute', { code, language });
-      setCodeOutput(res.data.output || res.data.error || 'No output');
+      if (res.data.error) {
+        setCodeOutput(res.data.error);
+      } else if (res.data.output) {
+        setCodeOutput(res.data.output);
+      } else {
+        setCodeOutput('No output');
+      }
     } catch (err: any) {
       setCodeOutput(err.response?.data?.error || err.response?.data?.message || 'Execution failed');
     } finally {
@@ -647,6 +664,17 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       } else {
         setQuestion(nextSession.currentQuestion || '');
       }
+
+      if (nextSession.whiteboardElements && !whiteboardSyncRef.current) {
+        try {
+          const parsed = JSON.parse(nextSession.whiteboardElements);
+          if (Array.isArray(parsed)) {
+            setWhiteboardElements(parsed);
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
     };
 
     void fetchState();
@@ -887,7 +915,11 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
 
           {whiteboardMode ? (
             <div className="flex-1 rounded-lg overflow-hidden border border-border">
-              <Whiteboard />
+              <Whiteboard
+                elements={whiteboardElements}
+                onChange={syncWhiteboard}
+                readOnly={false}
+              />
             </div>
           ) : (
             <div className="flex-1 rounded-lg overflow-hidden border border-border">
