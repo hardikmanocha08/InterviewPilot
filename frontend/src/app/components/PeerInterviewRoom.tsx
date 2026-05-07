@@ -49,6 +49,8 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const pendingWhiteboardRef = useRef<any[] | null>(null);
   const whiteboardFlushingRef = useRef(false);
   const fetchingStateRef = useRef(false);
+  const sessionHashRef = useRef('');
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [codeLanguage, setCodeLanguage] = useState('javascript');
   const [codeOutput, setCodeOutput] = useState('');
   const [codeRunning, setCodeRunning] = useState(false);
@@ -469,13 +471,24 @@ sys.stderr = StringIO()
   }, [patchSession, stopLocalMeter]);
 
   useEffect(() => {
+    const scheduleNext = () => {
+      pollTimerRef.current = setTimeout(() => void fetchState(), 0);
+    };
+
     const fetchState = async () => {
-      if (fetchingStateRef.current) return;
+      if (fetchingStateRef.current) {
+        scheduleNext();
+        return;
+      }
       fetchingStateRef.current = true;
       try {
         const res = await api.get(`/peer-sessions/${sessionId}/state`);
         const nextSession = res.data.session || {};
-        setSession(nextSession);
+        const sessHash = JSON.stringify(nextSession);
+        if (sessHash !== sessionHashRef.current) {
+          sessionHashRef.current = sessHash;
+          setSession(nextSession);
+        }
         if (nextSession.status === 'completed') {
           onFinish();
           return;
@@ -508,12 +521,15 @@ sys.stderr = StringIO()
       } finally {
         fetchingStateRef.current = false;
       }
+      scheduleNext();
     };
 
     void fetchState();
-    const interval = setInterval(fetchState, 50);
     return () => {
-      clearInterval(interval);
+      if (pollTimerRef.current) {
+        clearTimeout(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
       whiteboardFlushingRef.current = false;
       if (pendingWhiteboardRef.current) {
         void flushWhiteboard();
