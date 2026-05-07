@@ -26,24 +26,6 @@ interface PeerSessionState {
   rtcAnswer?: string;
   candidateIceCandidates?: string[];
   interviewerIceCandidates?: string[];
-  candidateAudioChunks?: PeerAudioChunk[];
-  interviewerAudioChunks?: PeerAudioChunk[];
-  candidatePcmPackets?: PeerPcmPacket[];
-  interviewerPcmPackets?: PeerPcmPacket[];
-}
-
-interface PeerAudioChunk {
-  id: string;
-  data: string;
-  mimeType: string;
-  createdAt?: string;
-}
-
-interface PeerPcmPacket {
-  id: string;
-  data: string;
-  sampleRate: number;
-  createdAt?: string;
 }
 
 const rtcConfig: RTCConfiguration = {
@@ -63,7 +45,6 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const [codeText, setCodeText] = useState('');
   const [whiteboardMode, setWhiteboardMode] = useState(false);
   const [whiteboardElements, setWhiteboardElements] = useState<any[]>([]);
-  const whiteboardSyncRef = useRef(false);
   const lastSyncedWhiteboardHashRef = useRef('');
   const pendingWhiteboardRef = useRef<any[] | null>(null);
   const whiteboardFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -76,7 +57,6 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const [localMicLevel, setLocalMicLevel] = useState(0);
   const [remoteMicLevel, setRemoteMicLevel] = useState(0);
   const [remotePlaybackReady, setRemotePlaybackReady] = useState(false);
-  const [relayPlaybackReady, setRelayPlaybackReady] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -87,30 +67,12 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const localAudioContextRef = useRef<AudioContext | null>(null);
   const remoteAudioContextRef = useRef<AudioContext | null>(null);
   const remotePlaybackContextRef = useRef<AudioContext | null>(null);
-  const relayAudioContextRef = useRef<AudioContext | null>(null);
   const remotePlaybackSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const remoteGainRef = useRef<GainNode | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const localMeterFrameRef = useRef<number | null>(null);
   const remoteMeterFrameRef = useRef<number | null>(null);
   const lastMicLevelPatchRef = useRef(0);
-  const audioRelayRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioRelayRunningRef = useRef(false);
-  const audioRelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pcmRelayContextRef = useRef<AudioContext | null>(null);
-  const pcmRelayProcessorRef = useRef<ScriptProcessorNode | null>(null);
-  const pcmRelaySourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const pcmRelaySilentGainRef = useRef<GainNode | null>(null);
-  const pcmPacketSendingRef = useRef(false);
-  const lastPcmPacketAtRef = useRef(0);
-  const playedRelayChunkIdsRef = useRef(new Set<string>());
-  const playedPcmPacketIdsRef = useRef(new Set<string>());
-  const relayQueueRef = useRef<PeerAudioChunk[]>([]);
-  const pcmQueueRef = useRef<PeerPcmPacket[]>([]);
-  const relayPlayingRef = useRef(false);
-  const pcmPlayingRef = useRef(false);
-  const relayNextStartTimeRef = useRef(0);
-  const pcmNextStartTimeRef = useRef(0);
   const pyodideRef = useRef<any>(null);
   const pyodideLoadingRef = useRef(false);
 
@@ -124,14 +86,11 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     const pending = pendingWhiteboardRef.current;
     if (!pending) return;
     pendingWhiteboardRef.current = null;
-    whiteboardSyncRef.current = true;
     lastSyncedWhiteboardHashRef.current = JSON.stringify(pending);
     try {
       await patchSession({ whiteboardElements: JSON.stringify(pending) });
     } catch {
       pendingWhiteboardRef.current = pending;
-    } finally {
-      setTimeout(() => { whiteboardSyncRef.current = false; }, 200);
     }
   }, [patchSession]);
 
@@ -178,7 +137,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     if (language === 'python') {
       return executePython(code);
     }
-    return `${language} execution requires a server-side runtime. In-browser execution is available for JavaScript, TypeScript, and Python. For ${language}, use a local compiler or an online IDE like Replit.`;
+    return `${language} execution requires a server-side runtime. Use a local compiler or an online IDE.`;
   };
 
   const executeJS = (code: string): Promise<string> => new Promise((resolve) => {
@@ -278,297 +237,6 @@ sys.stderr = StringIO()
     }
   };
 
-  const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
-
-  const dataUrlToArrayBuffer = async (dataUrl: string) => {
-    const response = await fetch(dataUrl);
-    return response.arrayBuffer();
-  };
-
-  const floatSamplesToBase64Pcm = (samples: Float32Array) => {
-    const bytes = new Uint8Array(samples.length * 2);
-    const view = new DataView(bytes.buffer);
-
-    for (let index = 0; index < samples.length; index += 1) {
-      const clamped = Math.max(-1, Math.min(1, samples[index]));
-      view.setInt16(index * 2, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true);
-    }
-
-    let binary = '';
-    for (let index = 0; index < bytes.length; index += 1) {
-      binary += String.fromCharCode(bytes[index]);
-    }
-    return btoa(binary);
-  };
-
-  const base64PcmToFloatSamples = (base64: string) => {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) {
-      bytes[index] = binary.charCodeAt(index);
-    }
-
-    const view = new DataView(bytes.buffer);
-    const samples = new Float32Array(bytes.length / 2);
-    for (let index = 0; index < samples.length; index += 1) {
-      samples[index] = view.getInt16(index * 2, true) / 0x8000;
-    }
-    return samples;
-  };
-
-  const ensureRelayAudioContext = useCallback(() => {
-    if (relayAudioContextRef.current) {
-      void relayAudioContextRef.current.resume();
-      return relayAudioContextRef.current;
-    }
-
-    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
-    const audioContext = new AudioContextCtor();
-    relayAudioContextRef.current = audioContext;
-    relayNextStartTimeRef.current = audioContext.currentTime;
-    void audioContext.resume().then(() => {
-      setRelayPlaybackReady(true);
-    });
-    return audioContext;
-  }, []);
-
-  const playPcmQueue = useCallback(async () => {
-    if (pcmPlayingRef.current) {
-      return;
-    }
-
-    pcmPlayingRef.current = true;
-    const audioContext = ensureRelayAudioContext();
-    await audioContext.resume();
-
-    while (pcmQueueRef.current.length > 0) {
-      const packet = pcmQueueRef.current.shift();
-      if (!packet) {
-        continue;
-      }
-
-      try {
-        const samples = base64PcmToFloatSamples(packet.data);
-        const audioBuffer = audioContext.createBuffer(1, samples.length, packet.sampleRate);
-        audioBuffer.copyToChannel(samples, 0);
-
-        const source = audioContext.createBufferSource();
-        const gain = audioContext.createGain();
-        gain.gain.value = 20;
-        source.buffer = audioBuffer;
-        source.connect(gain).connect(audioContext.destination);
-
-        const startAt = Math.max(audioContext.currentTime + 0.03, pcmNextStartTimeRef.current);
-        source.start(startAt);
-        pcmNextStartTimeRef.current = startAt + audioBuffer.duration;
-        setRelayPlaybackReady(true);
-      } catch (error) {
-        console.error('Failed to play PCM audio packet:', error);
-      }
-    }
-
-    pcmPlayingRef.current = false;
-  }, [ensureRelayAudioContext]);
-
-  const enqueuePcmPackets = useCallback((packets: PeerPcmPacket[] = []) => {
-    for (const packet of packets) {
-      if (playedPcmPacketIdsRef.current.has(packet.id)) {
-        continue;
-      }
-      playedPcmPacketIdsRef.current.add(packet.id);
-      pcmQueueRef.current.push(packet);
-    }
-
-    void playPcmQueue();
-  }, [playPcmQueue]);
-
-  const playRelayQueue = useCallback(async () => {
-    if (relayPlayingRef.current) {
-      return;
-    }
-
-    relayPlayingRef.current = true;
-    const audioContext = ensureRelayAudioContext();
-
-    while (relayQueueRef.current.length > 0) {
-      const chunk = relayQueueRef.current.shift();
-      if (!chunk) {
-        continue;
-      }
-
-      try {
-        const arrayBuffer = await dataUrlToArrayBuffer(chunk.data);
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-        const source = audioContext.createBufferSource();
-        const gain = audioContext.createGain();
-        gain.gain.value = 20;
-        source.buffer = audioBuffer;
-        source.connect(gain).connect(audioContext.destination);
-
-        const startAt = Math.max(audioContext.currentTime + 0.05, relayNextStartTimeRef.current);
-        source.start(startAt);
-        relayNextStartTimeRef.current = startAt + audioBuffer.duration;
-      } catch (error) {
-        console.error('Failed to play relayed audio chunk:', error);
-        setRelayPlaybackReady(false);
-      }
-    }
-
-    relayPlayingRef.current = false;
-  }, [ensureRelayAudioContext]);
-
-  const enqueueRelayChunks = useCallback((chunks: PeerAudioChunk[] = []) => {
-    for (const chunk of chunks) {
-      if (playedRelayChunkIdsRef.current.has(chunk.id)) {
-        continue;
-      }
-      playedRelayChunkIdsRef.current.add(chunk.id);
-      relayQueueRef.current.push(chunk);
-    }
-
-    void playRelayQueue();
-  }, [playRelayQueue]);
-
-  const startAudioRelay = useCallback((stream: MediaStream) => {
-    if (!window.MediaRecorder) {
-      return;
-    }
-
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus'
-      : MediaRecorder.isTypeSupported('audio/webm')
-        ? 'audio/webm'
-        : '';
-    audioRelayRunningRef.current = true;
-
-    const recordClip = () => {
-      if (!audioRelayRunningRef.current) {
-        return;
-      }
-
-      const recorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream);
-      const chunks: Blob[] = [];
-      audioRelayRecorderRef.current = recorder;
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size) {
-          chunks.push(event.data);
-        }
-      };
-
-      recorder.onstop = async () => {
-        if (chunks.length > 0) {
-          try {
-            const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || 'audio/webm' });
-            const data = await blobToDataUrl(blob);
-            await patchSession({
-              audioChunk: {
-                id: `${effectiveRole}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                data,
-                mimeType: blob.type || 'audio/webm',
-              },
-            });
-          } catch (error) {
-            console.error('Failed to send audio relay clip:', error);
-          }
-        }
-
-        if (audioRelayRunningRef.current) {
-          audioRelayTimerRef.current = setTimeout(recordClip, 25);
-        }
-      };
-
-      recorder.start();
-      audioRelayTimerRef.current = setTimeout(() => {
-        if (recorder.state === 'recording') {
-          recorder.stop();
-        }
-      }, 900);
-    };
-
-    recordClip();
-  }, [effectiveRole, patchSession]);
-
-  const stopAudioRelay = useCallback(() => {
-    audioRelayRunningRef.current = false;
-    if (audioRelayTimerRef.current) {
-      clearTimeout(audioRelayTimerRef.current);
-      audioRelayTimerRef.current = null;
-    }
-    if (audioRelayRecorderRef.current?.state === 'recording') {
-      audioRelayRecorderRef.current.stop();
-    }
-    audioRelayRecorderRef.current = null;
-  }, []);
-
-  const startPcmRelay = useCallback((stream: MediaStream) => {
-    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
-    const audioContext = new AudioContextCtor();
-
-    const bufferSize = 1024;
-
-    const source = audioContext.createMediaStreamSource(stream);
-    const processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
-
-    const silentGain = audioContext.createGain();
-    silentGain.gain.value = 0;
-
-    source.connect(processor);
-    processor.connect(silentGain).connect(audioContext.destination);
-
-    pcmRelayContextRef.current = audioContext;
-    pcmRelaySourceRef.current = source;
-    pcmRelayProcessorRef.current = processor;
-    pcmRelaySilentGainRef.current = silentGain;
-
-    void audioContext.resume();
-
-    processor.onaudioprocess = (event) => {
-      const now = Date.now();
-
-      const minIntervalMs = 40;
-
-      if (pcmPacketSendingRef.current || now - lastPcmPacketAtRef.current < minIntervalMs) {
-        return;
-      }
-
-      const input = event.inputBuffer.getChannelData(0);
-
-      const packetData = floatSamplesToBase64Pcm(input);
-      lastPcmPacketAtRef.current = now;
-      pcmPacketSendingRef.current = true;
-
-      void patchSession({
-        pcmPacket: {
-          id: `${effectiveRole}-pcm-${now}-${Math.random().toString(36).slice(2)}`,
-          data: packetData,
-          sampleRate: audioContext.sampleRate,
-        },
-      }).finally(() => {
-        pcmPacketSendingRef.current = false;
-      });
-    };
-  }, [effectiveRole, patchSession]);
-
-  const stopPcmRelay = useCallback(() => {
-    pcmRelayProcessorRef.current?.disconnect();
-    pcmRelaySourceRef.current?.disconnect();
-    pcmRelaySilentGainRef.current?.disconnect();
-    void pcmRelayContextRef.current?.close();
-    pcmRelayProcessorRef.current = null;
-    pcmRelaySourceRef.current = null;
-    pcmRelaySilentGainRef.current = null;
-    pcmRelayContextRef.current = null;
-    pcmPacketSendingRef.current = false;
-  }, []);
-
   const calculateLevel = (analyser: AnalyserNode, data: Uint8Array<ArrayBuffer>) => {
     analyser.getByteTimeDomainData(data);
     let sum = 0;
@@ -624,38 +292,6 @@ sys.stderr = StringIO()
     setRemoteMicLevel(0);
   }, []);
 
-  const stopRemotePlayback = useCallback(() => {
-    remotePlaybackSourceRef.current?.disconnect();
-    remoteGainRef.current?.disconnect();
-    remotePlaybackSourceRef.current = null;
-    remoteGainRef.current = null;
-    setRemotePlaybackReady(false);
-  }, []);
-
-  const startRemotePlayback = useCallback((stream: MediaStream) => {
-    stopRemotePlayback();
-
-    let audioContext = remotePlaybackContextRef.current;
-    if (!audioContext || audioContext.state === 'closed') {
-      const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
-      audioContext = new AudioContextCtor();
-      remotePlaybackContextRef.current = audioContext;
-    }
-
-    void audioContext.resume().then(() => {
-      console.log('[Audio] AudioContext resumed, state:', audioContext.state);
-      const source = audioContext.createMediaStreamSource(stream);
-      const gain = audioContext.createGain();
-      gain.gain.value = 2;
-      source.connect(gain).connect(audioContext.destination);
-      console.log('[Audio] Remote stream connected to destination');
-
-      remotePlaybackSourceRef.current = source;
-      remoteGainRef.current = gain;
-      setRemotePlaybackReady(true);
-    }).catch((e) => console.error('[Audio] Failed to resume AudioContext:', e));
-  }, [stopRemotePlayback]);
-
   const startRemoteMeter = useCallback((stream: MediaStream) => {
     stopRemoteMeter();
     const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
@@ -675,6 +311,36 @@ sys.stderr = StringIO()
     tick();
   }, [stopRemoteMeter]);
 
+  const stopRemotePlayback = useCallback(() => {
+    remotePlaybackSourceRef.current?.disconnect();
+    remoteGainRef.current?.disconnect();
+    remotePlaybackSourceRef.current = null;
+    remoteGainRef.current = null;
+    setRemotePlaybackReady(false);
+  }, []);
+
+  const startRemotePlayback = useCallback((stream: MediaStream) => {
+    stopRemotePlayback();
+
+    let audioContext = remotePlaybackContextRef.current;
+    if (!audioContext || audioContext.state === 'closed') {
+      const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+      audioContext = new AudioContextCtor();
+      remotePlaybackContextRef.current = audioContext;
+    }
+
+    void audioContext.resume().then(() => {
+      const source = audioContext.createMediaStreamSource(stream);
+      const gain = audioContext.createGain();
+      gain.gain.value = 2;
+      source.connect(gain).connect(audioContext.destination);
+
+      remotePlaybackSourceRef.current = source;
+      remoteGainRef.current = gain;
+      setRemotePlaybackReady(true);
+    }).catch(() => {});
+  }, [stopRemotePlayback]);
+
   const ensurePeerConnection = useCallback(() => {
     if (peerConnectionRef.current) {
       return peerConnectionRef.current;
@@ -684,7 +350,6 @@ sys.stderr = StringIO()
     peerConnectionRef.current = pc;
 
     pc.onconnectionstatechange = () => {
-      console.log('[WebRTC] Connection state:', pc.connectionState);
       setConnectionState(pc.connectionState);
     };
 
@@ -697,7 +362,6 @@ sys.stderr = StringIO()
     pc.ontrack = (event) => {
       const remoteStream = event.streams[0];
       remoteStreamRef.current = remoteStream;
-      console.log('[WebRTC] ontrack fired, tracks:', event.streams[0].getTracks().map(t => `${t.kind}:${t.id}`));
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = remoteStream;
         remoteAudioRef.current.muted = false;
@@ -705,7 +369,7 @@ sys.stderr = StringIO()
         remoteAudioRef.current.volume = 1;
         const playPromise = remoteAudioRef.current.play();
         if (playPromise !== undefined) {
-          playPromise.catch((e) => console.warn('[WebRTC] <audio> play() blocked:', e));
+          playPromise.catch(() => {});
         }
       }
       startRemoteMeter(remoteStream);
@@ -762,7 +426,6 @@ sys.stderr = StringIO()
 
       const pc = ensurePeerConnection();
       pc.addTrack(newStream.getAudioTracks()[0], newStream);
-      console.log('[WebRTC] Added audio track');
 
       const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
       if (!remotePlaybackContextRef.current || remotePlaybackContextRef.current.state === 'closed') {
@@ -787,7 +450,6 @@ sys.stderr = StringIO()
       setMicActive(true);
       await patchSession({ micActive: true });
     } catch (error) {
-      console.error('Microphone failed:', error);
       setMicError('Microphone permission failed. Check browser permissions and try again.');
     }
   }, [answerOffer, createOffer, effectiveRole, patchSession, session.rtcOffer, startLocalMeter, ensurePeerConnection]);
@@ -885,9 +547,7 @@ sys.stderr = StringIO()
       }
     };
 
-    void syncRtc().catch((error) => {
-      console.error('RTC sync failed:', error);
-    });
+    void syncRtc().catch(() => {});
   }, [answerOffer, ensurePeerConnection, effectiveRole, micActive, session]);
 
   useEffect(() => {
@@ -897,8 +557,6 @@ sys.stderr = StringIO()
       stopLocalMeter();
       stopRemoteMeter();
       stopRemotePlayback();
-      void relayAudioContextRef.current?.close();
-      relayAudioContextRef.current = null;
     };
   }, [stopLocalMeter, stopRemoteMeter, stopRemotePlayback]);
 
@@ -927,27 +585,6 @@ sys.stderr = StringIO()
     void remotePlaybackContextRef.current?.resume().then(() => {
       setRemotePlaybackReady(true);
     });
-  };
-
-  const debugAudio = () => {
-    const el = remoteAudioRef.current;
-    const ctx = remotePlaybackContextRef.current;
-    const stream = remoteStreamRef.current;
-    console.log('[Audio Debug]', {
-      remoteStreamExists: !!stream,
-      streamTracks: stream?.getTracks().map(t => ({ kind: t.kind, muted: t.muted, enabled: t.enabled, readyState: t.readyState })),
-      audioElementExists: !!el,
-      audioSrcObject: el?.srcObject ? 'yes' : 'no',
-      audioMuted: el?.muted,
-      audioVolume: el?.volume,
-      audioPaused: el?.paused,
-      audioReadyState: el?.readyState,
-      audioContextExists: !!ctx,
-      audioContextState: ctx?.state,
-      remotePlaybackReady,
-      connectionState,
-    });
-    alert(`Stream: ${stream ? 'yes' : 'no'} | Element muted: ${el?.muted} | Volume: ${el?.volume} | Context: ${ctx?.state || 'none'} | PC: ${connectionState}`);
   };
 
   const interviewerMicActive = Boolean(session.interviewerMicActive);
@@ -1004,13 +641,6 @@ sys.stderr = StringIO()
           <span className={`hidden sm:inline text-xs px-2 py-1 rounded border ${remotePlaybackReady ? 'border-green-500/30 text-green-300 bg-green-500/10' : 'border-border text-text-muted'}`}>
             Audio {remotePlaybackReady ? 'on' : 'off'}
           </span>
-          <button
-            onClick={debugAudio}
-            className="hidden sm:inline text-xs px-2 py-1 rounded border border-yellow-500/30 text-yellow-300 hover:bg-yellow-500/10"
-            title="Debug audio"
-          >
-            🔊 Debug
-          </button>
           <div className="hidden md:flex items-center gap-3">
             <MicLevel label="Interviewer" level={interviewerLevel} active={interviewerMicActive} />
             <MicLevel label="Interviewee" level={intervieweeLevel} active={intervieweeMicActive} />

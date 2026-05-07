@@ -12,14 +12,6 @@ import { FiSend, FiCheckCircle, FiChevronRight, FiAlertCircle, FiBarChart2, FiTh
 
 type EndReason = 'manual' | 'timeout' | 'abandoned';
 
-interface BehavioralMetric {
-    timestamp: Date;
-    eyeContact: number;
-    confidence: number;
-    speakingPace: 'slow' | 'normal' | 'fast';
-    emotionState: 'neutral' | 'positive' | 'nervous' | 'stressed';
-}
-
 export default function InterviewRoom() {
     const { id } = useParams();
     const router = useRouter();
@@ -33,7 +25,6 @@ export default function InterviewRoom() {
     const [timeLeftSeconds, setTimeLeftSeconds] = useState<number | null>(null);
     const [peerRole, setPeerRole] = useState<'interviewer' | 'interviewee' | null>(null);
     const [recordingAnswer, setRecordingAnswer] = useState(false);
-    const [transcribingAnswer, setTranscribingAnswer] = useState(false);
     const [voiceMode, setVoiceMode] = useState(false);
     const [codeMode, setCodeMode] = useState(false);
     const [codeText, setCodeText] = useState('');
@@ -46,11 +37,8 @@ export default function InterviewRoom() {
     const hasFinalizedRef = useRef(false);
     const timerExpiredRef = useRef(false);
     const canAbandonOnUnmountRef = useRef(false);
-    const submittedBehavioralMetricsRef = useRef(0);
     const proctorViolationRef = useRef(false);
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const browserSpeechRef = useRef<any>(null);
-    const answerAudioChunksRef = useRef<Blob[]>([]);
     const pyodideRef = useRef<any>(null);
     const pyodideLoadingRef = useRef(false);
     const isProctoredInterview = Boolean(interview?.behavioralAnalysis?.isEnabled);
@@ -339,28 +327,6 @@ export default function InterviewRoom() {
         await handleFinishInterview('timeout');
     };
 
-    const handleBehavioralMetricsUpdate = useCallback(async (metrics: BehavioralMetric[]) => {
-        if (!id) {
-            return;
-        }
-        const newMetrics = metrics.slice(submittedBehavioralMetricsRef.current);
-        if (newMetrics.length === 0) {
-            return;
-        }
-
-        submittedBehavioralMetricsRef.current = metrics.length;
-
-        try {
-            await api.post(`/interviews/${id}/behavioral-metrics`, { metrics: newMetrics });
-        } catch (error) {
-            submittedBehavioralMetricsRef.current -= newMetrics.length;
-            console.error('Failed to submit behavioral metrics:', error);
-        }
-    }, [id]);
-
-    // Heartbeat is tracked for observability only.
-    // Auto-ending based on heartbeat created false positives on some browsers/devices.
-
     const handlePeerSessionReady = useCallback((sessionId: string) => {
         setInterview((current: any) => current ? { ...current, peerSessionId: sessionId } : current);
     }, []);
@@ -501,78 +467,6 @@ sys.stderr = StringIO()
             pyodideLoadingRef.current = false;
             return `Python runtime error: ${err.message || 'Failed to load Pyodide. Check your internet connection.'}`;
         }
-    };
-
-    const startAnswerRecording = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: false,
-                    channelCount: 1,
-                    sampleRate: 48000,
-                },
-            });
-            const preferredMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                ? 'audio/webm;codecs=opus'
-                : MediaRecorder.isTypeSupported('audio/webm')
-                    ? 'audio/webm'
-                    : undefined;
-            const recorder = new MediaRecorder(
-                stream,
-                preferredMimeType
-                    ? { mimeType: preferredMimeType, audioBitsPerSecond: 128000 }
-                    : { audioBitsPerSecond: 128000 }
-            );
-            answerAudioChunksRef.current = [];
-            mediaRecorderRef.current = recorder;
-
-            recorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    answerAudioChunksRef.current.push(event.data);
-                }
-            };
-
-            recorder.onstop = async () => {
-                stream.getTracks().forEach((track) => track.stop());
-                const audioBlob = new Blob(answerAudioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-                if (!audioBlob.size || !id) {
-                    setRecordingAnswer(false);
-                    return;
-                }
-
-                setTranscribingAnswer(true);
-                try {
-                    const formData = new FormData();
-                    formData.append('audio', audioBlob, 'answer.webm');
-                    const res = await api.post(`/interviews/${id}/speech-to-text`, formData);
-                    const text = res.data?.text?.trim();
-                    if (text) {
-                        setAnswerInput((current) => current ? `${current.trim()}\n\n${text}` : text);
-                    }
-                } catch (error: any) {
-                    console.warn('Server STT failed:', error?.response?.status);
-                    alert('Voice transcription unavailable. Please type your answer or click the mic again to try.');
-                } finally {
-                    setTranscribingAnswer(false);
-                    setRecordingAnswer(false);
-                }
-            };
-
-            recorder.start();
-            setRecordingAnswer(true);
-        } catch (error) {
-            console.error('Microphone permission failed:', error);
-            alert('Microphone permission failed. Check browser permissions and try again.');
-        }
-    };
-
-    const stopAnswerRecording = () => {
-        if (mediaRecorderRef.current?.state === 'recording') {
-            mediaRecorderRef.current.stop();
-        }
-        setRecordingAnswer(false);
     };
 
     const startBrowserSpeechRecognition = () => {
@@ -968,11 +862,11 @@ sys.stderr = StringIO()
                             {voiceMode && !codeMode && (
                                 <div className="relative flex flex-col items-center py-6">
                                     <div className="text-sm text-text-muted mb-4">
-                                        {transcribingAnswer ? 'Processing...' : recordingAnswer ? 'Listening... Click to stop' : 'Click mic to speak'}
+                                        {recordingAnswer ? 'Listening... Click to stop' : 'Click mic to speak'}
                                     </div>
                                     <button
-                                        onClick={recordingAnswer ? stopAnswerRecording : startBrowserSpeechRecognition}
-                                        disabled={evaluating || finishing || transcribingAnswer}
+                                        onClick={recordingAnswer ? () => { browserSpeechRef.current?.stop(); setRecordingAnswer(false); } : startBrowserSpeechRecognition}
+                                        disabled={evaluating || finishing}
                                         className={`w-16 h-16 rounded-full flex items-center justify-center transition-all ${
                                             recordingAnswer
                                                 ? 'bg-red-500 animate-pulse scale-110'
@@ -981,8 +875,6 @@ sys.stderr = StringIO()
                                     >
                                         {recordingAnswer ? (
                                             <FiMicOff className="w-7 h-7 text-white" />
-                                        ) : transcribingAnswer ? (
-                                            <div className="w-7 h-7 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                         ) : (
                                             <FiMic className="w-7 h-7 text-white" />
                                         )}
