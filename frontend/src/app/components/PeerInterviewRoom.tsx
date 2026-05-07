@@ -157,7 +157,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
 
     iframe.onload = () => {
       try {
-        const win = iframe.contentWindow;
+        const win = iframe.contentWindow as any;
         if (!win) {
           resolve('Could not access iframe context.');
           return;
