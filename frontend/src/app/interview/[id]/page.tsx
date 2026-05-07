@@ -455,7 +455,15 @@ export default function InterviewRoom() {
         try {
             if (!pyodideRef.current && !pyodideLoadingRef.current) {
                 pyodideLoadingRef.current = true;
-                const loadPyodide = (await import('https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js')).loadPyodide;
+                await new Promise<void>((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js';
+                    script.onload = () => resolve();
+                    script.onerror = () => reject(new Error('Failed to load Pyodide script'));
+                    document.head.appendChild(script);
+                });
+                const loadPyodide = (globalThis as any).loadPyodide;
+                if (!loadPyodide) throw new Error('loadPyodide not found after script load');
                 pyodideRef.current = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.2/full/' });
                 pyodideLoadingRef.current = false;
             }
