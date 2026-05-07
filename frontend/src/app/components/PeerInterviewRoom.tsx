@@ -81,7 +81,6 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-  const audioSenderRef = useRef<RTCRtpSender | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const handledRemoteCandidatesRef = useRef(new Set<string>());
   const hasSetRemoteAnswerRef = useRef(false);
@@ -683,7 +682,6 @@ sys.stderr = StringIO()
 
     const pc = new RTCPeerConnection(rtcConfig);
     peerConnectionRef.current = pc;
-    audioSenderRef.current = pc.addTransceiver('audio', { direction: 'sendrecv' }).sender;
 
     pc.onconnectionstatechange = () => {
       console.log('[WebRTC] Connection state:', pc.connectionState);
@@ -718,10 +716,11 @@ sys.stderr = StringIO()
   }, [patchSession, startRemoteMeter, startRemotePlayback]);
 
   const addLocalTracks = useCallback((stream: MediaStream) => {
-    ensurePeerConnection();
+    const pc = ensurePeerConnection();
     const audioTrack = stream.getAudioTracks()[0];
-    if (audioTrack && audioSenderRef.current) {
-      void audioSenderRef.current.replaceTrack(audioTrack);
+    if (audioTrack) {
+      pc.addTrack(audioTrack, stream);
+      console.log('[WebRTC] Added audio track, senders:', pc.getSenders().map(s => s.track?.kind));
     }
   }, [ensurePeerConnection]);
 
@@ -790,13 +789,9 @@ sys.stderr = StringIO()
     stopLocalMeter();
     stopRemoteMeter();
     stopRemotePlayback();
-    if (audioSenderRef.current) {
-      await audioSenderRef.current.replaceTrack(null);
-    }
     localStreamRef.current = null;
     peerConnectionRef.current?.close();
     peerConnectionRef.current = null;
-    audioSenderRef.current = null;
     handledRemoteCandidatesRef.current.clear();
     hasSetRemoteAnswerRef.current = false;
     setMicActive(false);
