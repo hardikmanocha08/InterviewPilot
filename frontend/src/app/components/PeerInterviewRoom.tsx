@@ -100,7 +100,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       whiteboardFlushTimerRef.current = setTimeout(() => {
         whiteboardFlushTimerRef.current = null;
         void flushWhiteboard();
-      }, 100);
+      }, 0);
     }
   }, [flushWhiteboard]);
 
@@ -501,7 +501,7 @@ sys.stderr = StringIO()
     };
 
     void fetchState();
-    const interval = setInterval(fetchState, 500);
+    const interval = setInterval(fetchState, 150);
     return () => {
       clearInterval(interval);
       if (whiteboardFlushTimerRef.current) {
@@ -564,6 +564,7 @@ sys.stderr = StringIO()
     setSaving(true);
     try {
       await patchSession({ currentQuestion: question });
+      setQuestion('');
     } finally {
       setSaving(false);
     }
@@ -573,6 +574,8 @@ sys.stderr = StringIO()
     setSaving(true);
     try {
       await patchSession({ currentAnswer: answer, codeText });
+      setAnswer('');
+      setCodeText('');
     } finally {
       setSaving(false);
     }
