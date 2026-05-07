@@ -116,7 +116,9 @@ export async function PATCH(
     session.codeText = body.codeText.slice(0, 30000);
   }
   if (typeof body.whiteboardElements === 'string') {
-    session.whiteboardElements = body.whiteboardElements.slice(0, 500000);
+    if (body.whiteboardElements !== session.whiteboardElements) {
+      session.whiteboardElements = body.whiteboardElements.slice(0, 500000);
+    }
   }
   if (typeof body.micActive === 'boolean') {
     if (peerRole === 'interviewee') {

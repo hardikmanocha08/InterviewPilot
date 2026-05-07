@@ -195,7 +195,6 @@ export default function Whiteboard({
 
     const updated = [...elements, newElement];
     setElements(updated);
-    onChange?.(updated);
     setCurrentPoints([]);
   };
 
@@ -216,13 +215,11 @@ export default function Whiteboard({
 
     const updated = [...elements, newElement];
     setElements(updated);
-    onChange?.(updated);
     setTextInput(null);
   };
 
   const clearAll = () => {
     setElements([]);
-    onChange?.([]);
   };
 
   const tools: { id: Tool; icon: React.ReactNode; label: string }[] = [

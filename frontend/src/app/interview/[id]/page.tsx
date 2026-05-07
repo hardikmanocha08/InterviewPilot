@@ -49,6 +49,7 @@ export default function InterviewRoom() {
     const submittedBehavioralMetricsRef = useRef(0);
     const proctorViolationRef = useRef(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const browserSpeechRef = useRef<any>(null);
     const answerAudioChunksRef = useRef<Blob[]>([]);
     const isProctoredInterview = Boolean(interview?.behavioralAnalysis?.isEnabled);
 
@@ -392,59 +393,57 @@ export default function InterviewRoom() {
         }
     };
 
-    const executeClientSide = (code: string, language: string): Promise<string> => new Promise((resolve) => {
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.sandbox.add('allow-scripts');
-        document.body.appendChild(iframe);
+    const executeClientSide = (code: string, language: string): Promise<string> => {
+        if (language !== 'javascript' && language !== 'typescript') {
+            return Promise.resolve(`${language} execution requires a server-side runtime. Only JavaScript/TypeScript can run in-browser. For ${language}, install a local compiler or use an online IDE like Replit.`);
+        }
 
-        const timeout = setTimeout(() => {
-            document.body.removeChild(iframe);
-            resolve('Execution timed out (10s limit). Infinite loop detected?');
-        }, 10000);
+        return new Promise((resolve) => {
+            const outputs: string[] = [];
+            const originalLog = console.log;
+            const originalError = console.error;
+            const originalWarn = console.warn;
 
-        iframe.onload = () => {
+            const capture = (method: string, orig: typeof console.log) => (...args: any[]) => {
+                outputs.push(`[${method}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')}`);
+                orig(...args);
+            };
+
+            console.log = capture('log', originalLog);
+            console.error = capture('error', originalError);
+            console.warn = capture('warn', originalWarn);
+
+            const timeout = setTimeout(() => {
+                console.log = originalLog;
+                console.error = originalError;
+                console.warn = originalWarn;
+                resolve('Execution timed out (10s limit). Possible infinite loop?');
+            }, 10000);
+
             try {
-                const win = iframe.contentWindow as any;
-                if (!win) {
-                    resolve('Could not access iframe context.');
-                    return;
-                }
+                const wrappedCode = `(function() { "use strict"; try { ${code} } catch(e) { console.error(e.message); } })();`;
+                const fn = new Function(wrappedCode);
+                const result = fn();
+                clearTimeout(timeout);
 
-                const originalConsole = { log: win.console.log.bind(win.console), error: win.console.error.bind(win.console), warn: win.console.warn.bind(win.console) };
-                const outputs: string[] = [];
-                const capture = (method: string) => (...args: any[]) => {
-                    outputs.push(`[${method}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')}`);
-                };
-                win.console.log = capture('log');
-                win.console.error = capture('error');
-                win.console.warn = capture('warn');
-
-                const wrappedCode = language === 'typescript'
-                    ? `(function() { try { ${code} } catch(e) { console.error(e.message); } })();`
-                    : `(function() { "use strict"; try { ${code} } catch(e) { console.error(e.message); } })();`;
-
-                const result = win.eval(wrappedCode);
                 if (result !== undefined) {
                     outputs.push(`[return] ${typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result)}`);
                 }
 
-                win.console.log = originalConsole.log;
-                win.console.error = originalConsole.error;
-                win.console.warn = originalConsole.warn;
+                console.log = originalLog;
+                console.error = originalError;
+                console.warn = originalWarn;
 
-                document.body.removeChild(iframe);
-                clearTimeout(timeout);
                 resolve(outputs.length ? outputs.join('\n') : 'No output (no console.log calls)');
             } catch (err: any) {
-                document.body.removeChild(iframe);
                 clearTimeout(timeout);
+                console.log = originalLog;
+                console.error = originalError;
+                console.warn = originalWarn;
                 resolve(`Runtime error: ${err.message || String(err)}`);
             }
-        };
-
-        iframe.srcdoc = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body></body></html>';
-    });
+        });
+    };
 
     const startAnswerRecording = async () => {
         try {
@@ -481,6 +480,7 @@ export default function InterviewRoom() {
                 stream.getTracks().forEach((track) => track.stop());
                 const audioBlob = new Blob(answerAudioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
                 if (!audioBlob.size || !id) {
+                    setRecordingAnswer(false);
                     return;
                 }
 
@@ -494,12 +494,11 @@ export default function InterviewRoom() {
                         setAnswerInput((current) => current ? `${current.trim()}\n\n${text}` : text);
                     }
                 } catch (error: any) {
-                    const status = error?.response?.status;
-                    const sttError = error?.response?.data?.sttError;
-                    console.warn('Server STT failed (status:', status, '), falling back to browser SpeechRecognition');
-                    await transcribeWithBrowserSpeech();
+                    console.warn('Server STT failed:', error?.response?.status);
+                    alert('Voice transcription unavailable. Please type your answer or click the mic again to try.');
                 } finally {
                     setTranscribingAnswer(false);
+                    setRecordingAnswer(false);
                 }
             };
 
@@ -518,11 +517,17 @@ export default function InterviewRoom() {
         setRecordingAnswer(false);
     };
 
-    const transcribeWithBrowserSpeech = () => new Promise<void>((resolve) => {
+    const startBrowserSpeechRecognition = () => {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
         if (!SpeechRecognition) {
-            alert('Speech-to-text service unavailable. Please type your answer.');
-            resolve();
+            alert('Speech-to-text is not supported in this browser. Please type your answer.');
+            return;
+        }
+
+        if (browserSpeechRef.current) {
+            browserSpeechRef.current.abort();
+            browserSpeechRef.current = null;
+            setRecordingAnswer(false);
             return;
         }
 
@@ -530,6 +535,7 @@ export default function InterviewRoom() {
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.lang = 'en-US';
+        browserSpeechRef.current = recognition;
 
         let finalTranscript = '';
 
@@ -543,40 +549,35 @@ export default function InterviewRoom() {
                 }
             }
             setAnswerInput((current) => {
-                const base = current || '';
-                return finalTranscript + (interim ? `\n${interim}` : '');
+                const base = current ? current.trim() : '';
+                const display = [base, finalTranscript, interim].filter(Boolean).join('\n');
+                return display;
             });
         };
 
         recognition.onerror = (event: any) => {
             console.error('Browser SpeechRecognition error:', event.error);
             if (event.error === 'not-allowed') {
-                alert('Microphone access denied for speech-to-text. Please type your answer.');
+                alert('Microphone access denied for speech-to-text.');
             }
-            resolve();
+            browserSpeechRef.current = null;
+            setRecordingAnswer(false);
         };
 
         recognition.onend = () => {
             if (finalTranscript.trim()) {
                 setAnswerInput((current) => {
-                    const existing = current || '';
-                    return existing.trim() ? `${existing.trim()}\n\n${finalTranscript.trim()}` : finalTranscript.trim();
+                    const base = current ? current.trim() : '';
+                    return [base, finalTranscript.trim()].filter(Boolean).join('\n\n');
                 });
             }
-            resolve();
+            browserSpeechRef.current = null;
+            setRecordingAnswer(false);
         };
 
         recognition.start();
         setRecordingAnswer(true);
-
-        const stopRecognition = () => {
-            if (recognition.state !== 'closed') {
-                recognition.stop();
-            }
-        };
-
-        (window as any).__stopBrowserSTT = stopRecognition;
-    });
+    };
 
     if (loading) return <div className="min-h-screen bg-background flex items-center justify-center text-white">Loading Interview Environment...</div>;
 
@@ -908,9 +909,11 @@ export default function InterviewRoom() {
                             {/* Voice answer mode */}
                             {voiceMode && !codeMode && (
                                 <div className="relative flex flex-col items-center py-6">
-                                    <div className="text-sm text-text-muted mb-4">Speak your answer</div>
+                                    <div className="text-sm text-text-muted mb-4">
+                                        {transcribingAnswer ? 'Processing...' : recordingAnswer ? 'Listening... Click to stop' : 'Click mic to speak'}
+                                    </div>
                                     <button
-                                        onClick={recordingAnswer ? stopAnswerRecording : startAnswerRecording}
+                                        onClick={recordingAnswer ? stopAnswerRecording : startBrowserSpeechRecognition}
                                         disabled={evaluating || finishing || transcribingAnswer}
                                         className={`w-16 h-16 rounded-full flex items-center justify-center transition-all ${
                                             recordingAnswer
@@ -927,10 +930,7 @@ export default function InterviewRoom() {
                                         )}
                                     </button>
                                     {recordingAnswer && (
-                                        <div className="mt-4 text-xs text-red-400 animate-pulse">Recording... Click to stop</div>
-                                    )}
-                                    {transcribingAnswer && (
-                                        <div className="mt-4 text-xs text-text-muted">Transcribing...</div>
+                                        <div className="mt-4 text-xs text-red-400 animate-pulse">Browser speech recognition active</div>
                                     )}
                                     {answerInput && (
                                         <div className="mt-4 w-full max-w-lg">

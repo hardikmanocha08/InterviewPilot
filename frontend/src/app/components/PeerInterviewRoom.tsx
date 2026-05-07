@@ -60,67 +60,37 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const [whiteboardElements, setWhiteboardElements] = useState<any[]>([]);
   const whiteboardSyncRef = useRef(false);
   const lastSyncedWhiteboardHashRef = useRef('');
-  const [codeLanguage, setCodeLanguage] = useState('javascript');
-  const [codeOutput, setCodeOutput] = useState('');
-  const [codeRunning, setCodeRunning] = useState(false);
-  const [micActive, setMicActive] = useState(false);
-  const [micError, setMicError] = useState<string | null>(null);
-  const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>('new');
-  const [localMicLevel, setLocalMicLevel] = useState(0);
-  const [remoteMicLevel, setRemoteMicLevel] = useState(0);
-  const [remotePlaybackReady, setRemotePlaybackReady] = useState(false);
-  const [relayPlaybackReady, setRelayPlaybackReady] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const pendingWhiteboardRef = useRef<any[] | null>(null);
+  const whiteboardFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const localStreamRef = useRef<MediaStream | null>(null);
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-  const audioSenderRef = useRef<RTCRtpSender | null>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement>(null);
-  const handledRemoteCandidatesRef = useRef(new Set<string>());
-  const hasSetRemoteAnswerRef = useRef(false);
-  const localAudioContextRef = useRef<AudioContext | null>(null);
-  const remoteAudioContextRef = useRef<AudioContext | null>(null);
-  const remotePlaybackContextRef = useRef<AudioContext | null>(null);
-  const relayAudioContextRef = useRef<AudioContext | null>(null);
-  const remotePlaybackSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const remoteGainRef = useRef<GainNode | null>(null);
-  const remoteStreamRef = useRef<MediaStream | null>(null);
-  const localMeterFrameRef = useRef<number | null>(null);
-  const remoteMeterFrameRef = useRef<number | null>(null);
-  const lastMicLevelPatchRef = useRef(0);
-  const audioRelayRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioRelayRunningRef = useRef(false);
-  const audioRelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pcmRelayContextRef = useRef<AudioContext | null>(null);
-  const pcmRelayProcessorRef = useRef<ScriptProcessorNode | null>(null);
-  const pcmRelaySourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const pcmRelaySilentGainRef = useRef<GainNode | null>(null);
-  const pcmPacketSendingRef = useRef(false);
-  const lastPcmPacketAtRef = useRef(0);
-  const playedRelayChunkIdsRef = useRef(new Set<string>());
-  const playedPcmPacketIdsRef = useRef(new Set<string>());
-  const relayQueueRef = useRef<PeerAudioChunk[]>([]);
-  const pcmQueueRef = useRef<PeerPcmPacket[]>([]);
-  const relayPlayingRef = useRef(false);
-  const pcmPlayingRef = useRef(false);
-  const relayNextStartTimeRef = useRef(0);
-  const pcmNextStartTimeRef = useRef(0);
-
-  const patchSession = useCallback(async (payload: Record<string, unknown>) => {
-    const res = await api.patch(`/peer-sessions/${sessionId}/state`, payload);
-    setSession(res.data.session || {});
-    return res.data.session as PeerSessionState;
-  }, [sessionId]);
-
-  const syncWhiteboard = useCallback(async (els: any[]) => {
+  const flushWhiteboard = useCallback(async () => {
+    const pending = pendingWhiteboardRef.current;
+    if (!pending) return;
+    pendingWhiteboardRef.current = null;
     whiteboardSyncRef.current = true;
-    lastSyncedWhiteboardHashRef.current = JSON.stringify(els);
+    lastSyncedWhiteboardHashRef.current = JSON.stringify(pending);
     try {
-      await patchSession({ whiteboardElements: JSON.stringify(els) });
+      await patchSession({ whiteboardElements: JSON.stringify(pending) });
+    } catch {
+      pendingWhiteboardRef.current = pending;
     } finally {
       setTimeout(() => { whiteboardSyncRef.current = false; }, 200);
     }
   }, [patchSession]);
+
+  const scheduleWhiteboardSync = useCallback((els: any[]) => {
+    pendingWhiteboardRef.current = els;
+    if (!whiteboardFlushTimerRef.current) {
+      whiteboardFlushTimerRef.current = setTimeout(() => {
+        whiteboardFlushTimerRef.current = null;
+        void flushWhiteboard();
+      }, 300);
+    }
+  }, [flushWhiteboard]);
+
+  const syncWhiteboard = useCallback((els: any[]) => {
+    scheduleWhiteboardSync(els);
+  }, [scheduleWhiteboardSync]);
 
   const handleRunCode = async (code: string, language: string) => {
     setCodeRunning(true);
@@ -144,59 +114,57 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     }
   };
 
-  const executeClientSide = (code: string, language: string): Promise<string> => new Promise((resolve) => {
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.sandbox.add('allow-scripts');
-    document.body.appendChild(iframe);
+  const executeClientSide = (code: string, language: string): Promise<string> => {
+    if (language !== 'javascript' && language !== 'typescript') {
+      return Promise.resolve(`${language} execution requires a server-side runtime. Only JavaScript/TypeScript can run in-browser. For ${language}, install a local compiler or use an online IDE like Replit.`);
+    }
 
-    const timeout = setTimeout(() => {
-      document.body.removeChild(iframe);
-      resolve('Execution timed out (10s limit). Infinite loop detected?');
-    }, 10000);
+    return new Promise((resolve) => {
+      const outputs: string[] = [];
+      const originalLog = console.log;
+      const originalError = console.error;
+      const originalWarn = console.warn;
 
-    iframe.onload = () => {
+      const capture = (method: string, orig: typeof console.log) => (...args: any[]) => {
+        outputs.push(`[${method}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')}`);
+        orig(...args);
+      };
+
+      console.log = capture('log', originalLog);
+      console.error = capture('error', originalError);
+      console.warn = capture('warn', originalWarn);
+
+      const timeout = setTimeout(() => {
+        console.log = originalLog;
+        console.error = originalError;
+        console.warn = originalWarn;
+        resolve('Execution timed out (10s limit). Possible infinite loop?');
+      }, 10000);
+
       try {
-        const win = iframe.contentWindow as any;
-        if (!win) {
-          resolve('Could not access iframe context.');
-          return;
-        }
+        const wrappedCode = `(function() { "use strict"; try { ${code} } catch(e) { console.error(e.message); } })();`;
+        const fn = new Function(wrappedCode);
+        const result = fn();
+        clearTimeout(timeout);
 
-        const originalConsole = { log: win.console.log.bind(win.console), error: win.console.error.bind(win.console), warn: win.console.warn.bind(win.console) };
-        const outputs: string[] = [];
-        const capture = (method: string) => (...args: any[]) => {
-          outputs.push(`[${method}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')}`);
-        };
-        win.console.log = capture('log');
-        win.console.error = capture('error');
-        win.console.warn = capture('warn');
-
-        const wrappedCode = language === 'typescript'
-          ? `(function() { try { ${code} } catch(e) { console.error(e.message); } })();`
-          : `(function() { "use strict"; try { ${code} } catch(e) { console.error(e.message); } })();`;
-
-        const result = win.eval(wrappedCode);
         if (result !== undefined) {
           outputs.push(`[return] ${typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result)}`);
         }
 
-        win.console.log = originalConsole.log;
-        win.console.error = originalConsole.error;
-        win.console.warn = originalConsole.warn;
+        console.log = originalLog;
+        console.error = originalError;
+        console.warn = originalWarn;
 
-        document.body.removeChild(iframe);
-        clearTimeout(timeout);
         resolve(outputs.length ? outputs.join('\n') : 'No output (no console.log calls)');
       } catch (err: any) {
-        document.body.removeChild(iframe);
         clearTimeout(timeout);
+        console.log = originalLog;
+        console.error = originalError;
+        console.warn = originalWarn;
         resolve(`Runtime error: ${err.message || String(err)}`);
       }
-    };
-
-    iframe.srcdoc = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body></body></html>';
-  });
+    });
+  };
 
   const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -741,9 +709,18 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
     };
 
     void fetchState();
-    const interval = setInterval(fetchState, 750);
-    return () => clearInterval(interval);
-  }, [effectiveRole, onFinish, sessionId]);
+    const interval = setInterval(fetchState, 1500);
+    return () => {
+      clearInterval(interval);
+      if (whiteboardFlushTimerRef.current) {
+        clearTimeout(whiteboardFlushTimerRef.current);
+        whiteboardFlushTimerRef.current = null;
+      }
+      if (pendingWhiteboardRef.current) {
+        void flushWhiteboard();
+      }
+    };
+  }, [effectiveRole, onFinish, sessionId, flushWhiteboard]);
 
   useEffect(() => {
     if (!micActive) {
