@@ -63,6 +63,12 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const pendingWhiteboardRef = useRef<any[] | null>(null);
   const whiteboardFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const patchSession = useCallback(async (payload: Record<string, unknown>) => {
+    const res = await api.patch(`/peer-sessions/${sessionId}/state`, payload);
+    setSession(res.data.session || {});
+    return res.data.session as PeerSessionState;
+  }, [sessionId]);
+
   const flushWhiteboard = useCallback(async () => {
     const pending = pendingWhiteboardRef.current;
     if (!pending) return;
