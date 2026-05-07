@@ -182,6 +182,7 @@ export default function Whiteboard({
     const pos = getCanvasPos(e);
 
     if (currentTool === 'text') {
+      e.preventDefault();
       setTextInput({ x: pos.x, y: pos.y, value: '' });
       isLocalDrawingRef.current = false;
       return;
@@ -350,8 +351,10 @@ export default function Whiteboard({
         {/* Text input overlay */}
         {textInput && (
           <input
-            ref={textInputRef}
-            autoFocus
+            ref={(el) => {
+              textInputRef.current = el;
+              if (el) el.focus();
+            }}
             value={textInput.value}
             onChange={(e) => setTextInput({ ...textInput, value: e.target.value })}
             onBlur={() => {
