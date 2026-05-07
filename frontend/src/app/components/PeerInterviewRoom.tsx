@@ -47,7 +47,8 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const [whiteboardElements, setWhiteboardElements] = useState<any[]>([]);
   const lastSyncedWhiteboardHashRef = useRef('');
   const pendingWhiteboardRef = useRef<any[] | null>(null);
-  const whiteboardFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const whiteboardFlushingRef = useRef(false);
+  const fetchingStateRef = useRef(false);
   const [codeLanguage, setCodeLanguage] = useState('javascript');
   const [codeOutput, setCodeOutput] = useState('');
   const [codeRunning, setCodeRunning] = useState(false);
@@ -84,29 +85,32 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
 
   const flushWhiteboard = useCallback(async () => {
     const pending = pendingWhiteboardRef.current;
-    if (!pending) return;
+    if (!pending) {
+      whiteboardFlushingRef.current = false;
+      return;
+    }
     pendingWhiteboardRef.current = null;
-    lastSyncedWhiteboardHashRef.current = JSON.stringify(pending);
+    const serialized = JSON.stringify(pending);
     try {
-      await patchSession({ whiteboardElements: JSON.stringify(pending) });
+      await patchSession({ whiteboardElements: serialized });
+      lastSyncedWhiteboardHashRef.current = serialized;
     } catch {
       pendingWhiteboardRef.current = pending;
     }
+    whiteboardFlushingRef.current = false;
+    if (pendingWhiteboardRef.current) {
+      whiteboardFlushingRef.current = true;
+      void flushWhiteboard();
+    }
   }, [patchSession]);
 
-  const scheduleWhiteboardSync = useCallback((els: any[]) => {
+  const syncWhiteboard = useCallback((els: any[]) => {
     pendingWhiteboardRef.current = els;
-    if (!whiteboardFlushTimerRef.current) {
-      whiteboardFlushTimerRef.current = setTimeout(() => {
-        whiteboardFlushTimerRef.current = null;
-        void flushWhiteboard();
-      }, 0);
+    if (!whiteboardFlushingRef.current) {
+      whiteboardFlushingRef.current = true;
+      void flushWhiteboard();
     }
   }, [flushWhiteboard]);
-
-  const syncWhiteboard = useCallback((els: any[]) => {
-    scheduleWhiteboardSync(els);
-  }, [scheduleWhiteboardSync]);
 
   const handleRunCode = async (code: string, language: string) => {
     setCodeRunning(true);
@@ -466,48 +470,51 @@ sys.stderr = StringIO()
 
   useEffect(() => {
     const fetchState = async () => {
-      const res = await api.get(`/peer-sessions/${sessionId}/state`);
-      const nextSession = res.data.session || {};
-      setSession(nextSession);
-      if (nextSession.status === 'completed') {
-        onFinish();
-        return;
-      }
-      if (res.data.peerRole) {
-        setEffectiveRole(res.data.peerRole);
-      }
-
-      if ((res.data.peerRole || effectiveRole) === 'interviewer') {
-        setAnswer(nextSession.currentAnswer || '');
-        setCodeText(nextSession.codeText || '');
-      } else {
-        setQuestion(nextSession.currentQuestion || '');
-      }
-
-      if (nextSession.whiteboardElements) {
-        try {
-          const parsed = JSON.parse(nextSession.whiteboardElements);
-          if (Array.isArray(parsed)) {
-            const hash = JSON.stringify(parsed);
-            if (hash !== lastSyncedWhiteboardHashRef.current) {
-              lastSyncedWhiteboardHashRef.current = hash;
-              setWhiteboardElements(parsed);
-            }
-          }
-        } catch {
-          // ignore parse errors
+      if (fetchingStateRef.current) return;
+      fetchingStateRef.current = true;
+      try {
+        const res = await api.get(`/peer-sessions/${sessionId}/state`);
+        const nextSession = res.data.session || {};
+        setSession(nextSession);
+        if (nextSession.status === 'completed') {
+          onFinish();
+          return;
         }
+        if (res.data.peerRole) {
+          setEffectiveRole(res.data.peerRole);
+        }
+
+        if ((res.data.peerRole || effectiveRole) === 'interviewer') {
+          setAnswer(nextSession.currentAnswer || '');
+          setCodeText(nextSession.codeText || '');
+        } else {
+          setQuestion(nextSession.currentQuestion || '');
+        }
+
+        if (nextSession.whiteboardElements) {
+          try {
+            const parsed = JSON.parse(nextSession.whiteboardElements);
+            if (Array.isArray(parsed)) {
+              const hash = JSON.stringify(parsed);
+              if (hash !== lastSyncedWhiteboardHashRef.current) {
+                lastSyncedWhiteboardHashRef.current = hash;
+                setWhiteboardElements(parsed);
+              }
+            }
+          } catch {
+            // ignore parse errors
+          }
+        }
+      } finally {
+        fetchingStateRef.current = false;
       }
     };
 
     void fetchState();
-    const interval = setInterval(fetchState, 150);
+    const interval = setInterval(fetchState, 50);
     return () => {
       clearInterval(interval);
-      if (whiteboardFlushTimerRef.current) {
-        clearTimeout(whiteboardFlushTimerRef.current);
-        whiteboardFlushTimerRef.current = null;
-      }
+      whiteboardFlushingRef.current = false;
       if (pendingWhiteboardRef.current) {
         void flushWhiteboard();
       }

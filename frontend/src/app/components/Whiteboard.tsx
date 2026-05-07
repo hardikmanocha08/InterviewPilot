@@ -30,15 +30,18 @@ export default function Whiteboard({
   const containerRef = useRef<HTMLDivElement>(null);
   const [internalElements, setInternalElements] = useState<DrawingElement[]>([]);
   const isLocalDrawingRef = useRef(false);
+  const externalHashRef = useRef('');
 
   // Sync from server only when NOT currently drawing locally
   useEffect(() => {
     if (externalElements && !isLocalDrawingRef.current) {
-      const extHash = JSON.stringify(externalElements);
-      const intHash = JSON.stringify(internalElements);
-      if (extHash !== intHash) {
-        setInternalElements(externalElements);
-      }
+      const hash = JSON.stringify(externalElements);
+      if (hash === externalHashRef.current) return;
+      externalHashRef.current = hash;
+      setInternalElements(prev => {
+        if (JSON.stringify(prev) === hash) return prev;
+        return externalElements;
+      });
     }
   }, [externalElements]);
 
