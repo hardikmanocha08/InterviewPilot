@@ -61,9 +61,11 @@ export default function Whiteboard({
   const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number }[]>([]);
   const [textInput, setTextInput] = useState<{ x: number; y: number; value: string } | null>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
+  const textSubmittedRef = useRef(false);
 
   useEffect(() => {
     if (textInput) {
+      textSubmittedRef.current = false;
       textInputRef.current?.focus();
     }
   }, [textInput]);
@@ -235,6 +237,8 @@ export default function Whiteboard({
   };
 
   const handleTextSubmit = () => {
+    if (textSubmittedRef.current) return;
+    textSubmittedRef.current = true;
     if (!textInput || !textInput.value.trim()) {
       setTextInput(null);
       return;
@@ -350,12 +354,25 @@ export default function Whiteboard({
             autoFocus
             value={textInput.value}
             onChange={(e) => setTextInput({ ...textInput, value: e.target.value })}
-            onBlur={handleTextSubmit}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleTextSubmit();
-              if (e.key === 'Escape') setTextInput(null);
+            onBlur={() => {
+              if (!textSubmittedRef.current && textInput?.value.trim()) {
+                handleTextSubmit();
+              } else {
+                setTextInput(null);
+              }
             }}
-            className="absolute bg-transparent text-white border border-primary outline-none font-mono text-sm px-1 py-0.5"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                handleTextSubmit();
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setTextInput(null);
+              }
+            }}
+            className="absolute bg-[#1e1e32] text-white border-2 border-primary outline-none font-mono text-base px-2 py-1 rounded"
             style={{ left: textInput.x, top: textInput.y - 10 }}
             placeholder="Type here..."
           />
