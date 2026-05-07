@@ -41,7 +41,17 @@ export async function POST(
       );
     }
 
-    const text = await transcribeAudio(audio);
+    let text: string;
+    try {
+      text = await transcribeAudio(audio);
+    } catch (sttError) {
+      console.warn('NVIDIA STT failed, returning error to client for browser fallback:', sttError);
+      return NextResponse.json(
+        { message: 'STT service unavailable. Please type your answer or check browser microphone permissions.', sttError: sttError instanceof Error ? sttError.message : String(sttError) },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json({ text });
   } catch (err) {
     console.error('Transcription error', err);

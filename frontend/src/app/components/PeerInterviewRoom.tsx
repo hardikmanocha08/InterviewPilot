@@ -59,6 +59,7 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
   const [whiteboardMode, setWhiteboardMode] = useState(false);
   const [whiteboardElements, setWhiteboardElements] = useState<any[]>([]);
   const whiteboardSyncRef = useRef(false);
+  const lastSyncedWhiteboardHashRef = useRef('');
   const [codeLanguage, setCodeLanguage] = useState('javascript');
   const [codeOutput, setCodeOutput] = useState('');
   const [codeRunning, setCodeRunning] = useState(false);
@@ -113,10 +114,11 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
 
   const syncWhiteboard = useCallback(async (els: any[]) => {
     whiteboardSyncRef.current = true;
+    lastSyncedWhiteboardHashRef.current = JSON.stringify(els);
     try {
       await patchSession({ whiteboardElements: JSON.stringify(els) });
     } finally {
-      setTimeout(() => { whiteboardSyncRef.current = false; }, 100);
+      setTimeout(() => { whiteboardSyncRef.current = false; }, 200);
     }
   }, [patchSession]);
 
@@ -127,6 +129,9 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       const res = await api.post('/code/execute', { code, language });
       if (res.data.error) {
         setCodeOutput(res.data.error);
+      } else if (res.data.clientSide) {
+        const result = await executeClientSide(code, language);
+        setCodeOutput(result);
       } else if (res.data.output) {
         setCodeOutput(res.data.output);
       } else {
@@ -138,6 +143,60 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
       setCodeRunning(false);
     }
   };
+
+  const executeClientSide = (code: string, language: string): Promise<string> => new Promise((resolve) => {
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.sandbox.add('allow-scripts');
+    document.body.appendChild(iframe);
+
+    const timeout = setTimeout(() => {
+      document.body.removeChild(iframe);
+      resolve('Execution timed out (10s limit). Infinite loop detected?');
+    }, 10000);
+
+    iframe.onload = () => {
+      try {
+        const win = iframe.contentWindow;
+        if (!win) {
+          resolve('Could not access iframe context.');
+          return;
+        }
+
+        const originalConsole = { log: win.console.log.bind(win.console), error: win.console.error.bind(win.console), warn: win.console.warn.bind(win.console) };
+        const outputs: string[] = [];
+        const capture = (method: string) => (...args: any[]) => {
+          outputs.push(`[${method}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')}`);
+        };
+        win.console.log = capture('log');
+        win.console.error = capture('error');
+        win.console.warn = capture('warn');
+
+        const wrappedCode = language === 'typescript'
+          ? `(function() { try { ${code} } catch(e) { console.error(e.message); } })();`
+          : `(function() { "use strict"; try { ${code} } catch(e) { console.error(e.message); } })();`;
+
+        const result = win.eval(wrappedCode);
+        if (result !== undefined) {
+          outputs.push(`[return] ${typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result)}`);
+        }
+
+        win.console.log = originalConsole.log;
+        win.console.error = originalConsole.error;
+        win.console.warn = originalConsole.warn;
+
+        document.body.removeChild(iframe);
+        clearTimeout(timeout);
+        resolve(outputs.length ? outputs.join('\n') : 'No output (no console.log calls)');
+      } catch (err: any) {
+        document.body.removeChild(iframe);
+        clearTimeout(timeout);
+        resolve(`Runtime error: ${err.message || String(err)}`);
+      }
+    };
+
+    iframe.srcdoc = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body></body></html>';
+  });
 
   const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -665,11 +724,15 @@ export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: Pee
         setQuestion(nextSession.currentQuestion || '');
       }
 
-      if (nextSession.whiteboardElements && !whiteboardSyncRef.current) {
+      if (nextSession.whiteboardElements) {
         try {
           const parsed = JSON.parse(nextSession.whiteboardElements);
           if (Array.isArray(parsed)) {
-            setWhiteboardElements(parsed);
+            const hash = JSON.stringify(parsed);
+            if (hash !== lastSyncedWhiteboardHashRef.current) {
+              lastSyncedWhiteboardHashRef.current = hash;
+              setWhiteboardElements(parsed);
+            }
           }
         } catch {
           // ignore parse errors

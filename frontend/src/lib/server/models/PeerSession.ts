@@ -46,6 +46,7 @@ export interface IPeerSession extends Document {
     sampleRate: number;
     createdAt: Date;
   }[];
+  whiteboardElements?: string;
   interviewerFeedback?: {
     overallScore: number;
     communication: string;
@@ -198,6 +199,10 @@ const peerSessionSchema = new mongoose.Schema<IPeerSession>(
       type: String,
       enum: ['public', 'private'],
       default: 'public',
+    },
+    whiteboardElements: {
+      type: String,
+      default: '',
     },
     joinCodeHash: {
       type: String,

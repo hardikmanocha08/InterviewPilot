@@ -115,6 +115,9 @@ export async function PATCH(
   if (peerRole === 'interviewee' && typeof body.codeText === 'string') {
     session.codeText = body.codeText.slice(0, 30000);
   }
+  if (typeof body.whiteboardElements === 'string') {
+    session.whiteboardElements = body.whiteboardElements.slice(0, 500000);
+  }
   if (typeof body.micActive === 'boolean') {
     if (peerRole === 'interviewee') {
       session.candidateMicActive = body.micActive;

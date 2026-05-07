@@ -28,7 +28,16 @@ export default function Whiteboard({
 }: WhiteboardProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [elements, setElements] = useState<DrawingElement[]>(externalElements || []);
+  const [internalElements, setInternalElements] = useState<DrawingElement[]>(externalElements || []);
+  const elements = externalElements || internalElements;
+  const setElements = (els: DrawingElement[] | ((prev: DrawingElement[]) => DrawingElement[])) => {
+    const prev = externalElements || internalElements;
+    const updated = typeof els === 'function' ? els(prev) : els;
+    if (!externalElements) {
+      setInternalElements(updated);
+    }
+    onChange?.(updated);
+  };
   const [currentTool, setCurrentTool] = useState<Tool>('pen');
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentColor, setCurrentColor] = useState('#e2e8f0');
@@ -38,7 +47,11 @@ export default function Whiteboard({
 
   useEffect(() => {
     if (externalElements) {
-      setElements(externalElements);
+      const extHash = JSON.stringify(externalElements);
+      const intHash = JSON.stringify(internalElements);
+      if (extHash !== intHash) {
+        setInternalElements(externalElements);
+      }
     }
   }, [externalElements]);
 

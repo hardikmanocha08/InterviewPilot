@@ -377,6 +377,9 @@ export default function InterviewRoom() {
             const res = await api.post('/code/execute', { code, language });
             if (res.data.error) {
                 setCodeOutput(res.data.error);
+            } else if (res.data.clientSide) {
+                const result = await executeClientSide(code, language);
+                setCodeOutput(result);
             } else if (res.data.output) {
                 setCodeOutput(res.data.output);
             } else {
@@ -388,6 +391,60 @@ export default function InterviewRoom() {
             setCodeRunning(false);
         }
     };
+
+    const executeClientSide = (code: string, language: string): Promise<string> => new Promise((resolve) => {
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.sandbox.add('allow-scripts');
+        document.body.appendChild(iframe);
+
+        const timeout = setTimeout(() => {
+            document.body.removeChild(iframe);
+            resolve('Execution timed out (10s limit). Infinite loop detected?');
+        }, 10000);
+
+        iframe.onload = () => {
+            try {
+                const win = iframe.contentWindow;
+                if (!win) {
+                    resolve('Could not access iframe context.');
+                    return;
+                }
+
+                const originalConsole = { log: win.console.log.bind(win.console), error: win.console.error.bind(win.console), warn: win.console.warn.bind(win.console) };
+                const outputs: string[] = [];
+                const capture = (method: string) => (...args: any[]) => {
+                    outputs.push(`[${method}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')}`);
+                };
+                win.console.log = capture('log');
+                win.console.error = capture('error');
+                win.console.warn = capture('warn');
+
+                const wrappedCode = language === 'typescript'
+                    ? `(function() { try { ${code} } catch(e) { console.error(e.message); } })();`
+                    : `(function() { "use strict"; try { ${code} } catch(e) { console.error(e.message); } })();`;
+
+                const result = win.eval(wrappedCode);
+                if (result !== undefined) {
+                    outputs.push(`[return] ${typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result)}`);
+                }
+
+                win.console.log = originalConsole.log;
+                win.console.error = originalConsole.error;
+                win.console.warn = originalConsole.warn;
+
+                document.body.removeChild(iframe);
+                clearTimeout(timeout);
+                resolve(outputs.length ? outputs.join('\n') : 'No output (no console.log calls)');
+            } catch (err: any) {
+                document.body.removeChild(iframe);
+                clearTimeout(timeout);
+                resolve(`Runtime error: ${err.message || String(err)}`);
+            }
+        };
+
+        iframe.srcdoc = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body></body></html>';
+    });
 
     const startAnswerRecording = async () => {
         try {
@@ -436,9 +493,11 @@ export default function InterviewRoom() {
                     if (text) {
                         setAnswerInput((current) => current ? `${current.trim()}\n\n${text}` : text);
                     }
-                } catch (error) {
-                    console.error('Failed to transcribe answer:', error);
-                    alert(`Transcription failed: ${error instanceof Error ? error.message : 'STT provider error. Try again or type your answer.'}`);
+                } catch (error: any) {
+                    const status = error?.response?.status;
+                    const sttError = error?.response?.data?.sttError;
+                    console.warn('Server STT failed (status:', status, '), falling back to browser SpeechRecognition');
+                    await transcribeWithBrowserSpeech();
                 } finally {
                     setTranscribingAnswer(false);
                 }
@@ -458,6 +517,66 @@ export default function InterviewRoom() {
         }
         setRecordingAnswer(false);
     };
+
+    const transcribeWithBrowserSpeech = () => new Promise<void>((resolve) => {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert('Speech-to-text service unavailable. Please type your answer.');
+            resolve();
+            return;
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        let finalTranscript = '';
+
+        recognition.onresult = (event: any) => {
+            let interim = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interim += event.results[i][0].transcript;
+                }
+            }
+            setAnswerInput((current) => {
+                const base = current || '';
+                return finalTranscript + (interim ? `\n${interim}` : '');
+            });
+        };
+
+        recognition.onerror = (event: any) => {
+            console.error('Browser SpeechRecognition error:', event.error);
+            if (event.error === 'not-allowed') {
+                alert('Microphone access denied for speech-to-text. Please type your answer.');
+            }
+            resolve();
+        };
+
+        recognition.onend = () => {
+            if (finalTranscript.trim()) {
+                setAnswerInput((current) => {
+                    const existing = current || '';
+                    return existing.trim() ? `${existing.trim()}\n\n${finalTranscript.trim()}` : finalTranscript.trim();
+                });
+            }
+            resolve();
+        };
+
+        recognition.start();
+        setRecordingAnswer(true);
+
+        const stopRecognition = () => {
+            if (recognition.state !== 'closed') {
+                recognition.stop();
+            }
+        };
+
+        (window as any).__stopBrowserSTT = stopRecognition;
+    });
 
     if (loading) return <div className="min-h-screen bg-background flex items-center justify-center text-white">Loading Interview Environment...</div>;
 
