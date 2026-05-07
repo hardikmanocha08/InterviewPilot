@@ -60,6 +60,13 @@ export default function Whiteboard({
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number }[]>([]);
   const [textInput, setTextInput] = useState<{ x: number; y: number; value: string } | null>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (textInput) {
+      textInputRef.current?.focus();
+    }
+  }, [textInput]);
 
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -99,6 +106,7 @@ export default function Whiteboard({
     }
 
     for (const el of allElements) {
+      if (el.type === 'eraser') continue;
       ctx.strokeStyle = el.color;
       ctx.fillStyle = el.color;
       ctx.lineWidth = el.strokeWidth;
@@ -193,6 +201,25 @@ export default function Whiteboard({
     isLocalDrawingRef.current = false;
 
     if (currentPoints.length === 0) return;
+
+    if (currentTool === 'eraser') {
+      const threshold = Math.max(strokeWidth * 6, 12);
+      const filtered = elements.filter(el => {
+        for (const pt of currentPoints) {
+          for (const ep of el.points) {
+            const dx = ep.x - pt.x;
+            const dy = ep.y - pt.y;
+            if (dx * dx + dy * dy < threshold * threshold) return false;
+          }
+        }
+        return true;
+      });
+      if (filtered.length !== elements.length) {
+        setElements(filtered);
+      }
+      setCurrentPoints([]);
+      return;
+    }
 
     const newElement: DrawingElement = {
       id: Date.now().toString(),
@@ -319,6 +346,7 @@ export default function Whiteboard({
         {/* Text input overlay */}
         {textInput && (
           <input
+            ref={textInputRef}
             autoFocus
             value={textInput.value}
             onChange={(e) => setTextInput({ ...textInput, value: e.target.value })}
