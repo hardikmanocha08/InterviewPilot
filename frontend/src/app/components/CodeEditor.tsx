@@ -6,11 +6,8 @@ const LANGUAGES = [
   { id: 'javascript', label: 'JavaScript', ext: '.js' },
   { id: 'python', label: 'Python', ext: '.py' },
   { id: 'java', label: 'Java', ext: '.java' },
+  { id: 'c', label: 'C', ext: '.c' },
   { id: 'cpp', label: 'C++', ext: '.cpp' },
-  { id: 'csharp', label: 'C#', ext: '.cs' },
-  { id: 'typescript', label: 'TypeScript', ext: '.ts' },
-  { id: 'go', label: 'Go', ext: '.go' },
-  { id: 'rust', label: 'Rust', ext: '.rs' },
 ];
 
 const KEYWORDS: Record<string, string[]> = {
@@ -19,6 +16,7 @@ const KEYWORDS: Record<string, string[]> = {
   python: ['def', 'class', 'return', 'if', 'elif', 'else', 'for', 'while', 'import', 'from', 'as', 'try', 'except', 'finally', 'raise', 'with', 'yield', 'lambda', 'True', 'False', 'None', 'and', 'or', 'not', 'in', 'is', 'pass', 'break', 'continue', 'self', 'async', 'await', 'global', 'nonlocal'],
   java: ['public', 'private', 'protected', 'static', 'final', 'abstract', 'class', 'interface', 'extends', 'implements', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'try', 'catch', 'finally', 'throw', 'throws', 'new', 'this', 'super', 'void', 'int', 'double', 'float', 'boolean', 'char', 'long', 'short', 'byte', 'String', 'true', 'false', 'null'],
   cpp: ['int', 'float', 'double', 'char', 'bool', 'void', 'string', 'vector', 'map', 'set', 'auto', 'const', 'static', 'class', 'struct', 'public', 'private', 'protected', 'virtual', 'override', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'try', 'catch', 'throw', 'new', 'delete', 'nullptr', 'true', 'false', 'include', 'using', 'namespace', 'template', 'typename'],
+  c: ['int', 'float', 'double', 'char', 'void', 'short', 'long', 'signed', 'unsigned', 'const', 'static', 'extern', 'auto', 'register', 'volatile', 'struct', 'union', 'enum', 'typedef', 'sizeof', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'default', 'goto', 'true', 'false', 'NULL', 'include', 'define', 'ifdef', 'ifndef', 'endif'],
   csharp: ['public', 'private', 'protected', 'static', 'void', 'class', 'interface', 'return', 'if', 'else', 'for', 'foreach', 'while', 'do', 'switch', 'case', 'break', 'continue', 'try', 'catch', 'finally', 'throw', 'new', 'this', 'base', 'using', 'namespace', 'async', 'await', 'var', 'const', 'readonly', 'string', 'int', 'bool', 'double', 'float', 'decimal', 'true', 'false', 'null'],
   go: ['package', 'import', 'func', 'return', 'if', 'else', 'for', 'range', 'switch', 'case', 'break', 'continue', 'type', 'struct', 'interface', 'map', 'chan', 'go', 'defer', 'select', 'var', 'const', 'true', 'false', 'nil', 'string', 'int', 'float64', 'bool', 'byte', 'error', 'make', 'append', 'len', 'cap', 'close'],
   rust: ['fn', 'let', 'mut', 'const', 'static', 'pub', 'priv', 'use', 'mod', 'struct', 'enum', 'impl', 'trait', 'type', 'where', 'return', 'if', 'else', 'for', 'while', 'loop', 'match', 'break', 'continue', 'self', 'Self', 'super', 'crate', 'true', 'false', 'Some', 'None', 'Ok', 'Err', 'String', 'Vec', 'i32', 'i64', 'u32', 'u64', 'f32', 'f64', 'bool', 'char', 'str', 'async', 'await', 'move', 'ref', 'in'],

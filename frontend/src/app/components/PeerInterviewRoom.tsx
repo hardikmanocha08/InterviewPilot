@@ -47,7 +47,10 @@ interface PeerPcmPacket {
 }
 
 const rtcConfig: RTCConfiguration = {
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ],
 };
 
 export default function PeerInterviewRoom({ sessionId, peerRole, onFinish }: PeerInterviewRoomProps) {
@@ -508,8 +511,6 @@ sys.stderr = StringIO()
     const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
     const audioContext = new AudioContextCtor();
 
-    // Use a smaller buffer + schedule cadence closer to real-time.
-    // This reduces chunking artifacts/crackling caused by large/irregular packets.
     const bufferSize = 1024;
 
     const source = audioContext.createMediaStreamSource(stream);
@@ -531,8 +532,6 @@ sys.stderr = StringIO()
     processor.onaudioprocess = (event) => {
       const now = Date.now();
 
-      // ~60 FPS cadence => 16-20ms per packet for smoother real-time feel.
-      // ScriptProcessor callback period is not perfect, so we gate sending by time.
       const minIntervalMs = 40;
 
       if (pcmPacketSendingRef.current || now - lastPcmPacketAtRef.current < minIntervalMs) {
@@ -541,7 +540,6 @@ sys.stderr = StringIO()
 
       const input = event.inputBuffer.getChannelData(0);
 
-      // Downmix already mono. Convert to int16 PCM base64.
       const packetData = floatSamplesToBase64Pcm(input);
       lastPcmPacketAtRef.current = now;
       pcmPacketSendingRef.current = true;
@@ -692,15 +690,16 @@ sys.stderr = StringIO()
     };
 
     pc.ontrack = (event) => {
+      const remoteStream = event.streams[0];
+      remoteStreamRef.current = remoteStream;
       if (remoteAudioRef.current) {
-        const remoteStream = event.streams[0];
-        remoteStreamRef.current = remoteStream;
         remoteAudioRef.current.srcObject = remoteStream;
-        remoteAudioRef.current.muted = true;
+        remoteAudioRef.current.muted = false;
         remoteAudioRef.current.volume = 1;
-        startRemoteMeter(remoteStream);
-        startRemotePlayback(remoteStream);
+        void remoteAudioRef.current.play().catch(() => {});
       }
+      startRemoteMeter(remoteStream);
+      startRemotePlayback(remoteStream);
     };
 
     return pc;
@@ -933,8 +932,6 @@ sys.stderr = StringIO()
 
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
-      <audio ref={remoteAudioRef} autoPlay playsInline controls className="fixed left-4 bottom-4 z-50 h-8 w-64 opacity-80" />
-
       <div className="border-b border-border bg-surface px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase text-primary font-semibold">Peer Interview</p>
