@@ -715,15 +715,6 @@ sys.stderr = StringIO()
     return pc;
   }, [patchSession, startRemoteMeter, startRemotePlayback]);
 
-  const addLocalTracks = useCallback((stream: MediaStream) => {
-    const pc = ensurePeerConnection();
-    const audioTrack = stream.getAudioTracks()[0];
-    if (audioTrack) {
-      pc.addTrack(audioTrack, stream);
-      console.log('[WebRTC] Added audio track, senders:', pc.getSenders().map(s => s.track?.kind));
-    }
-  }, [ensurePeerConnection]);
-
   const createOffer = useCallback(async () => {
     const pc = ensurePeerConnection();
     const offer = await pc.createOffer();
@@ -746,7 +737,18 @@ sys.stderr = StringIO()
   const startMic = useCallback(async () => {
     try {
       setMicError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({
+
+      const stream = localStreamRef.current;
+
+      if (stream && stream.getAudioTracks().length > 0) {
+        stream.getAudioTracks().forEach(track => { track.enabled = true; });
+        startLocalMeter(stream);
+        setMicActive(true);
+        await patchSession({ micActive: true });
+        return;
+      }
+
+      const newStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -755,11 +757,12 @@ sys.stderr = StringIO()
           sampleRate: 48000,
         },
       });
-      localStreamRef.current = stream;
-      addLocalTracks(stream);
-      startLocalMeter(stream);
-      setMicActive(true);
-      await patchSession({ micActive: true });
+      localStreamRef.current = newStream;
+      startLocalMeter(newStream);
+
+      const pc = ensurePeerConnection();
+      pc.addTrack(newStream.getAudioTracks()[0], newStream);
+      console.log('[WebRTC] Added audio track');
 
       const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
       if (!remotePlaybackContextRef.current || remotePlaybackContextRef.current.state === 'closed') {
@@ -773,30 +776,31 @@ sys.stderr = StringIO()
       }
       void remotePlaybackContextRef.current.resume();
 
-      if (effectiveRole === 'interviewer') {
-        await createOffer();
-      } else if (session.rtcOffer) {
-        await answerOffer(session.rtcOffer);
+      if (pc.connectionState === 'new') {
+        if (effectiveRole === 'interviewer') {
+          await createOffer();
+        } else if (session.rtcOffer) {
+          await answerOffer(session.rtcOffer);
+        }
       }
+
+      setMicActive(true);
+      await patchSession({ micActive: true });
     } catch (error) {
       console.error('Microphone failed:', error);
       setMicError('Microphone permission failed. Check browser permissions and try again.');
     }
-  }, [addLocalTracks, answerOffer, createOffer, effectiveRole, patchSession, session.rtcOffer, startLocalMeter]);
+  }, [answerOffer, createOffer, effectiveRole, patchSession, session.rtcOffer, startLocalMeter, ensurePeerConnection]);
 
   const stopMic = useCallback(async () => {
-    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    const stream = localStreamRef.current;
+    if (stream) {
+      stream.getAudioTracks().forEach(track => { track.enabled = false; });
+    }
     stopLocalMeter();
-    stopRemoteMeter();
-    stopRemotePlayback();
-    localStreamRef.current = null;
-    peerConnectionRef.current?.close();
-    peerConnectionRef.current = null;
-    handledRemoteCandidatesRef.current.clear();
-    hasSetRemoteAnswerRef.current = false;
     setMicActive(false);
     await patchSession({ micActive: false, micLevel: 0 });
-  }, [patchSession, stopLocalMeter, stopRemoteMeter, stopRemotePlayback]);
+  }, [patchSession, stopLocalMeter]);
 
   useEffect(() => {
     const fetchState = async () => {
