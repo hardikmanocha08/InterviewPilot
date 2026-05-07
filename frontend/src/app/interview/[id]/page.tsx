@@ -51,6 +51,8 @@ export default function InterviewRoom() {
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const browserSpeechRef = useRef<any>(null);
     const answerAudioChunksRef = useRef<Blob[]>([]);
+    const pyodideRef = useRef<any>(null);
+    const pyodideLoadingRef = useRef(false);
     const isProctoredInterview = Boolean(interview?.behavioralAnalysis?.isEnabled);
 
     useEffect(() => {
@@ -393,56 +395,104 @@ export default function InterviewRoom() {
         }
     };
 
-    const executeClientSide = (code: string, language: string): Promise<string> => {
-        if (language !== 'javascript' && language !== 'typescript') {
-            return Promise.resolve(`${language} execution requires a server-side runtime. Only JavaScript/TypeScript can run in-browser. For ${language}, install a local compiler or use an online IDE like Replit.`);
+    const executeClientSide = async (code: string, language: string): Promise<string> => {
+        if (language === 'javascript' || language === 'typescript') {
+            return executeJS(code, language);
         }
+        if (language === 'python') {
+            return executePython(code);
+        }
+        return `${language} execution requires a server-side runtime. In-browser execution is available for JavaScript, TypeScript, and Python. For ${language}, use a local compiler or an online IDE like Replit.`;
+    };
 
-        return new Promise((resolve) => {
+    const executeJS = (code: string, _language: string): Promise<string> => new Promise((resolve) => {
+        const outputs: string[] = [];
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+
+        const capture = (method: string, orig: typeof console.log) => (...args: any[]) => {
+            outputs.push(`[${method}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')}`);
+            orig(...args);
+        };
+
+        console.log = capture('log', originalLog);
+        console.error = capture('error', originalError);
+        console.warn = capture('warn', originalWarn);
+
+        const timeout = setTimeout(() => {
+            console.log = originalLog;
+            console.error = originalError;
+            console.warn = originalWarn;
+            resolve('Execution timed out (10s limit). Possible infinite loop?');
+        }, 10000);
+
+        try {
+            const wrappedCode = `(function() { "use strict"; try { ${code} } catch(e) { console.error(e.message); } })();`;
+            const fn = new Function(wrappedCode);
+            const result = fn();
+            clearTimeout(timeout);
+
+            if (result !== undefined) {
+                outputs.push(`[return] ${typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result)}`);
+            }
+
+            console.log = originalLog;
+            console.error = originalError;
+            console.warn = originalWarn;
+
+            resolve(outputs.length ? outputs.join('\n') : 'No output (no console.log calls)');
+        } catch (err: any) {
+            clearTimeout(timeout);
+            console.log = originalLog;
+            console.error = originalError;
+            console.warn = originalWarn;
+            resolve(`Runtime error: ${err.message || String(err)}`);
+        }
+    });
+
+    const executePython = async (code: string): Promise<string> => {
+        try {
+            if (!pyodideRef.current && !pyodideLoadingRef.current) {
+                pyodideLoadingRef.current = true;
+                const loadPyodide = (await import('https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js')).loadPyodide;
+                pyodideRef.current = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.2/full/' });
+                pyodideLoadingRef.current = false;
+            }
+
+            const pyodide = pyodideRef.current;
+            if (!pyodide) {
+                return 'Failed to load Python runtime. Check your internet connection and try again.';
+            }
+
             const outputs: string[] = [];
-            const originalLog = console.log;
-            const originalError = console.error;
-            const originalWarn = console.warn;
-
-            const capture = (method: string, orig: typeof console.log) => (...args: any[]) => {
-                outputs.push(`[${method}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')}`);
-                orig(...args);
-            };
-
-            console.log = capture('log', originalLog);
-            console.error = capture('error', originalError);
-            console.warn = capture('warn', originalWarn);
+            pyodide.runPython(`
+import sys
+from io import StringIO
+sys.stdout = StringIO()
+sys.stderr = StringIO()
+`);
 
             const timeout = setTimeout(() => {
-                console.log = originalLog;
-                console.error = originalError;
-                console.warn = originalWarn;
-                resolve('Execution timed out (10s limit). Possible infinite loop?');
+                pyodide.runPython('import sys; sys.stdout.flush(); sys.stderr.flush()');
             }, 10000);
 
             try {
-                const wrappedCode = `(function() { "use strict"; try { ${code} } catch(e) { console.error(e.message); } })();`;
-                const fn = new Function(wrappedCode);
-                const result = fn();
+                pyodide.runPython(code);
                 clearTimeout(timeout);
-
-                if (result !== undefined) {
-                    outputs.push(`[return] ${typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result)}`);
-                }
-
-                console.log = originalLog;
-                console.error = originalError;
-                console.warn = originalWarn;
-
-                resolve(outputs.length ? outputs.join('\n') : 'No output (no console.log calls)');
+                const stdout = pyodide.runPython('sys.stdout.getvalue()');
+                const stderr = pyodide.runPython('sys.stderr.getvalue()');
+                const combined = [stdout, stderr].filter(Boolean).join('\n');
+                return combined || 'No output (no print statements)';
             } catch (err: any) {
                 clearTimeout(timeout);
-                console.log = originalLog;
-                console.error = originalError;
-                console.warn = originalWarn;
-                resolve(`Runtime error: ${err.message || String(err)}`);
+                const stderr = pyodide.runPython('sys.stderr.getvalue()');
+                return stderr || `Python error: ${err.message || String(err)}`;
             }
-        });
+        } catch (err: any) {
+            pyodideLoadingRef.current = false;
+            return `Python runtime error: ${err.message || 'Failed to load Pyodide. Check your internet connection.'}`;
+        }
     };
 
     const startAnswerRecording = async () => {

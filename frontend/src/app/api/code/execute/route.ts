@@ -3,7 +3,7 @@ import { authenticate } from '@/lib/server/auth';
 import connectDB from '@/lib/server/db';
 import Interview from '@/lib/server/models/Interview';
 
-const JS_LANGUAGES = new Set(['javascript', 'typescript']);
+const CLIENT_SIDE_LANGUAGES = new Set(['javascript', 'typescript', 'python']);
 
 export async function POST(req: NextRequest) {
   await connectDB();
@@ -20,16 +20,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Code is required' }, { status: 400 });
     }
 
-    if (!JS_LANGUAGES.has(language || 'javascript')) {
+    const lang = language || 'javascript';
+
+    if (!CLIENT_SIDE_LANGUAGES.has(lang)) {
       return NextResponse.json({
-        output: `${language || 'javascript'} execution requires a server-side runtime. Only JavaScript/TypeScript can run in-browser. For ${language || 'other'}, install a local compiler or use an online IDE like Replit.`,
+        output: `${lang} execution requires a server-side runtime. In-browser execution is available for JavaScript, TypeScript, and Python. For ${lang}, use a local compiler or an online IDE like Replit.`,
         exitCode: 0,
         hasError: false,
-        note: `${language || 'other'} requires server-side execution. Running as JS fallback.`,
       });
     }
-
-    console.log('[code/execute] Running JS/TS code, length:', code.length);
 
     return NextResponse.json({
       output: '__CLIENT_SIDE_EXECUTION__',

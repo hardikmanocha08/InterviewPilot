@@ -28,25 +28,12 @@ export default function Whiteboard({
 }: WhiteboardProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [internalElements, setInternalElements] = useState<DrawingElement[]>(externalElements || []);
-  const elements = externalElements || internalElements;
-  const setElements = (els: DrawingElement[] | ((prev: DrawingElement[]) => DrawingElement[])) => {
-    const prev = externalElements || internalElements;
-    const updated = typeof els === 'function' ? els(prev) : els;
-    if (!externalElements) {
-      setInternalElements(updated);
-    }
-    onChange?.(updated);
-  };
-  const [currentTool, setCurrentTool] = useState<Tool>('pen');
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [currentColor, setCurrentColor] = useState('#e2e8f0');
-  const [strokeWidth, setStrokeWidth] = useState(2);
-  const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number }[]>([]);
-  const [textInput, setTextInput] = useState<{ x: number; y: number; value: string } | null>(null);
+  const [internalElements, setInternalElements] = useState<DrawingElement[]>([]);
+  const isLocalDrawingRef = useRef(false);
 
+  // Sync from server only when NOT currently drawing locally
   useEffect(() => {
-    if (externalElements) {
+    if (externalElements && !isLocalDrawingRef.current) {
       const extHash = JSON.stringify(externalElements);
       const intHash = JSON.stringify(internalElements);
       if (extHash !== intHash) {
@@ -54,6 +41,22 @@ export default function Whiteboard({
       }
     }
   }, [externalElements]);
+
+  const elements = internalElements;
+
+  const setElements = (els: DrawingElement[] | ((prev: DrawingElement[]) => DrawingElement[])) => {
+    setInternalElements((prev) => {
+      const updated = typeof els === 'function' ? els(prev) : els;
+      onChange?.(updated);
+      return updated;
+    });
+  };
+  const [currentTool, setCurrentTool] = useState<Tool>('pen');
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentColor, setCurrentColor] = useState('#e2e8f0');
+  const [strokeWidth, setStrokeWidth] = useState(2);
+  const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number }[]>([]);
+  const [textInput, setTextInput] = useState<{ x: number; y: number; value: string } | null>(null);
 
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -162,10 +165,12 @@ export default function Whiteboard({
 
   const handleStart = (e: React.MouseEvent | React.TouchEvent) => {
     if (readOnly) return;
+    isLocalDrawingRef.current = true;
     const pos = getCanvasPos(e);
 
     if (currentTool === 'text') {
       setTextInput({ x: pos.x, y: pos.y, value: '' });
+      isLocalDrawingRef.current = false;
       return;
     }
 
@@ -182,6 +187,7 @@ export default function Whiteboard({
   const handleEnd = () => {
     if (!isDrawing || readOnly) return;
     setIsDrawing(false);
+    isLocalDrawingRef.current = false;
 
     if (currentPoints.length === 0) return;
 

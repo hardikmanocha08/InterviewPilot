@@ -26,22 +26,24 @@ const KEYWORDS: Record<string, string[]> = {
 
 function highlightCode(code: string, language: string): string {
   const keywords = KEYWORDS[language] || KEYWORDS.javascript;
-  const escaped = code
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
 
-  let result = escaped;
+  const tokenRegex = /(\/\/[^\n]*)|(\/\*[\s\S]*?\*\/)|(#.*$)|("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|(\b\d+\.?\d*\b)|(\b(?:[a-zA-Z_$][\w$]*)\b)/g;
 
-  result = result.replace(/(\/\/[^\n]*)/g, '<span class="text-gray-500 italic">$1</span>');
-  result = result.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="text-gray-500 italic">$1</span>');
-  result = result.replace(/(#.*$)/gm, '<span class="text-gray-500 italic">$1</span>');
-  result = result.replace(/("""[\s\S]*?"""|'''[\s\S]*?'''|"[^"]*"|'[^']*'|`[^`]*`)/g, '<span class="text-green-400">$1</span>');
-
-  const keywordPattern = new RegExp(`\\b(${keywords.join('|')})\\b`, 'g');
-  result = result.replace(keywordPattern, '<span class="text-purple-400 font-semibold">$1</span>');
-
-  result = result.replace(/\b(\d+\.?\d*)\b/g, '<span class="text-orange-400">$1</span>');
+  const result = code.replace(tokenRegex, (match, lineComment, blockComment, hashComment, stringLit, number, identifier) => {
+    if (lineComment || blockComment || hashComment) {
+      return `<span class="text-gray-500 italic">${match.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>`;
+    }
+    if (stringLit) {
+      return `<span class="text-green-400">${stringLit.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>`;
+    }
+    if (number) {
+      return `<span class="text-orange-400">${number}</span>`;
+    }
+    if (identifier && keywords.includes(identifier)) {
+      return `<span class="text-purple-400 font-semibold">${identifier}</span>`;
+    }
+    return match.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  });
 
   return result;
 }
